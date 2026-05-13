@@ -88,19 +88,13 @@ Tables included:
 
 The current code should be treated as a production-oriented scaffold, not as a fully verified release.
 
-### Deferred verification
+### Verification status (resumed)
 
-The local environment used on 2026-05-13 did not provide `node`, `npm`, `pnpm`, or `bun`.
-Because of that, the following verification tasks were not completed in this pass:
+Cloud verification resumed on 2026-05-13 with Node 22 selected via nvm in this environment.
 
-- Dependency installation with `npm install`
-- Type checking with `npm run typecheck`
-- Production build with `npm run build`
-- Local D1 migration verification with `npm run db:migrate:local`
-- Local Pages Functions preview with `npm run preview`
-- Runtime smoke testing for `/`, `/admin/login`, `/admin`, `/api/settings/public`, `/robots.txt`, `/sitemap.xml`, and `/docs/:slug`
-
-Resume these checks in the cloud development environment before treating the MVP as build-verified.
+- Runtime target is now aligned with Astro requirement (`>=22.12.0`).
+- Build verification (Task 0) is actively resumed.
+- After Task 0 passes, continue Task 1 local D1 migration and Task 2 Pages preview smoke tests.
 
 Likely areas Codex should inspect and harden:
 

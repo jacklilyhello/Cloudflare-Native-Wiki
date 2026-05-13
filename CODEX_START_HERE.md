@@ -68,19 +68,18 @@ Then fix any TypeScript, Astro, Cloudflare runtime, or dependency issues.
 
 ## Deferred local-environment checks
 
-Status as of 2026-05-13:
+Status as of 2026-05-13 (cloud environment verification pass):
 
-- Local `node`, `npm`, `pnpm`, and `bun` were not available in the current shell.
-- Temporary download of official Node.js for local verification was not approved.
-- The following checks were intentionally skipped and must be resumed in the later cloud development environment:
-  - `npm install`
+- `node` and `npm` are now available, but Node.js is `v20.20.2`.
+- `npm run typecheck` and `npm run build` were executed and both failed before project checks, because Astro requires Node `>=22.12.0`.
+- The following checks remain blocked until the runtime is upgraded:
   - `npm run typecheck`
   - `npm run build`
-  - `npm run db:migrate:local`
-  - `npm run preview`
+  - `wrangler d1 migrations apply cf_native_wiki --local`
+  - `npm run preview` / `wrangler pages dev dist`
   - Cloudflare Pages Functions runtime smoke tests
 
-When cloud development starts, resume from `docs/CODEX_TASKS.md` Task 0, then Task 1 and Task 2 before adding larger features.
+Next action: upgrade runtime to Node `22.12.0+`, then resume from `docs/CODEX_TASKS.md` Task 0, Task 1, and Task 2 before adding larger features.
 
 ## Development priority
 
