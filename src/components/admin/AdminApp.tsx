@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FileText, Image, LayoutTree, Settings, LogOut, Plus, Save, Send } from 'lucide-react';
+import { FileText, Image, Settings, LogOut, Plus, Save, Send } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 
@@ -18,7 +18,7 @@ type SettingsMap = Record<string, string>;
 
 function authHeaders() {
   const token = localStorage.getItem('wiki_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return token ? { Authorization: `Bearer ${token}` } : undefined;
 }
 
 async function api(path: string, init: RequestInit = {}) {
@@ -45,7 +45,7 @@ export default function AdminApp() {
 
   const tabs = [
     { id: 'pages', label: '页面', icon: FileText },
-    { id: 'navigation', label: '导航树', icon: LayoutTree },
+    { id: 'navigation', label: '导航树', icon: FileText },
     { id: 'assets', label: '资源', icon: Image },
     { id: 'settings', label: '站点设置', icon: Settings }
   ] as const;
@@ -242,7 +242,7 @@ function AssetsPanel() {
     const form = new FormData();
     form.append('file', file);
     const res = await fetch('/api/assets/upload', { method: 'POST', headers: authHeaders(), body: form });
-    const json = await res.json();
+    const json = await res.json() as { error?: string; markdown?: string };
     if (!res.ok) throw new Error(json.error || '上传失败');
     setMessage(`已上传：${json.markdown}`);
     await load();

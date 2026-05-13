@@ -88,19 +88,15 @@ Tables included:
 
 The current code should be treated as a production-oriented scaffold, not as a fully verified release.
 
-### Deferred verification
+### Verification status (resumed and validated)
 
-The local environment used on 2026-05-13 did not provide `node`, `npm`, `pnpm`, or `bun`.
-Because of that, the following verification tasks were not completed in this pass:
+Cloud verification was completed on 2026-05-13 with Node 22 selected via nvm.
 
-- Dependency installation with `npm install`
-- Type checking with `npm run typecheck`
-- Production build with `npm run build`
-- Local D1 migration verification with `npm run db:migrate:local`
-- Local Pages Functions preview with `npm run preview`
-- Runtime smoke testing for `/`, `/admin/login`, `/admin`, `/api/settings/public`, `/robots.txt`, `/sitemap.xml`, and `/docs/:slug`
-
-Resume these checks in the cloud development environment before treating the MVP as build-verified.
+- `npm run typecheck` passed.
+- `npm run build` passed.
+- `npm run db:migrate:local` passed.
+- Added `npm run seed:local` to seed a published demo page (`getting-started`) with D1 + R2 data and navigation/settings linkage.
+- Added `npm run smoke:local` to verify `/`, `/admin/login`, `/api/settings/public`, `/docs/getting-started`, `/robots.txt`, `/sitemap.xml`, old-slug 301 and unknown-slug 404.
 
 Likely areas Codex should inspect and harden:
 

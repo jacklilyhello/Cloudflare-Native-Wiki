@@ -28,5 +28,6 @@ export type NavNode = {
   depth?: number;
   is_folder?: number | boolean;
   is_visible?: number | boolean;
+  is_pinned?: number | boolean;
   children?: NavNode[];
 };

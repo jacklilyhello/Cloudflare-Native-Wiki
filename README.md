@@ -79,6 +79,27 @@ npm run build
 npm run preview
 ```
 
+本地最小闭环验证（推荐）：
+
+```bash
+npm run db:migrate:local
+npm run seed:local
+npm run preview
+# 新开终端
+npm run smoke:local
+```
+
+`npm run smoke:local` 会检查：
+
+- `/` -> 200
+- `/admin/login` -> 308
+- `/api/settings/public` -> 200
+- `/docs/getting-started` -> 200
+- `/robots.txt` -> 200
+- `/sitemap.xml` -> 200
+- `/docs/getting-started-old` -> 301
+- `/docs/not-found-slug` -> 404
+
 部署：
 
 ```bash
@@ -123,4 +144,3 @@ Read in this order:
 7. `docs/CACHE_RENDERING_STRATEGY.md`
 8. `docs/CLOUDFLARE_DEPLOYMENT.md`
 9. `docs/UI_UX_SPEC.md`
-
