@@ -2,10 +2,12 @@
 
 ## Current execution note
 
-On 2026-05-13, Node 22 runtime was selected in the cloud environment and verification resumed.
+On 2026-05-13, local verification baseline has been resumed and completed in cloud dev environment:
 
-- Use `source ~/.nvm/nvm.sh && nvm use 22.22.2` before running project checks in this environment.
-- Continue Task 0 (`npm run typecheck`, `npm run build`) and then proceed to Tasks 1-2.
+- `npm install` / `npm run typecheck` / `npm run build` passed under Node 22.
+- `npm run db:migrate:local` passed.
+- `npm run seed:local` now creates a published demo page (`/docs/getting-started`) and a redirect sample (`/docs/getting-started-old` -> 301).
+- `npm run smoke:local` validates core routes, 301 redirect and 404.
 
 ## Task 0 — Build verification
 
@@ -77,6 +79,9 @@ Verify:
 - `/api/settings/public`
 - `/robots.txt`
 - `/sitemap.xml`
+- `/docs/getting-started`
+- `/docs/getting-started-old` (expect 301)
+- `/docs/not-found-slug` (expect 404)
 
 ## Task 3 — Make Markdown renderer production-grade
 

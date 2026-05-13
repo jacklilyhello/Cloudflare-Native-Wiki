@@ -88,13 +88,15 @@ Tables included:
 
 The current code should be treated as a production-oriented scaffold, not as a fully verified release.
 
-### Verification status (resumed)
+### Verification status (resumed and validated)
 
-Cloud verification resumed on 2026-05-13 with Node 22 selected via nvm in this environment.
+Cloud verification was completed on 2026-05-13 with Node 22 selected via nvm.
 
-- Runtime target is now aligned with Astro requirement (`>=22.12.0`).
-- Build verification (Task 0) is actively resumed.
-- After Task 0 passes, continue Task 1 local D1 migration and Task 2 Pages preview smoke tests.
+- `npm run typecheck` passed.
+- `npm run build` passed.
+- `npm run db:migrate:local` passed.
+- Added `npm run seed:local` to seed a published demo page (`getting-started`) with D1 + R2 data and navigation/settings linkage.
+- Added `npm run smoke:local` to verify `/`, `/admin/login`, `/api/settings/public`, `/docs/getting-started`, `/robots.txt`, `/sitemap.xml`, old-slug 301 and unknown-slug 404.
 
 Likely areas Codex should inspect and harden:
 
