@@ -1,0 +1,26 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Emby Wiki">
+  <main class="min-h-screen bg-[var(--bg)] text-[var(--text)]">
+    <section class="mx-auto flex min-h-screen max-w-6xl flex-col justify-center px-6 py-20">
+      <div class="mb-6 inline-flex w-fit rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--muted)]">
+        Cloudflare Native · Markdown Wiki · Edge Cached
+      </div>
+      <h1 class="max-w-3xl text-5xl font-semibold tracking-tight md:text-7xl">
+        Emby Wiki 教程站
+      </h1>
+      <p class="mt-6 max-w-2xl text-lg leading-8 text-[var(--muted)]">
+        一个完全基于 Cloudflare Pages、Functions、D1、R2、KV 和 Cache API 的轻量级文档系统。
+      </p>
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href="/docs/emby/getting-started" class="rounded-xl bg-[var(--primary)] px-5 py-3 text-sm font-medium text-white shadow-sm">
+          进入文档
+        </a>
+        <a href="/admin" class="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-sm font-medium">
+          后台管理
+        </a>
+      </div>
+    </section>
+  </main>
+</BaseLayout>

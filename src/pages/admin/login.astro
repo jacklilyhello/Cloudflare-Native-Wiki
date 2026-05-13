@@ -1,0 +1,37 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+<BaseLayout title="登录 - Emby Wiki">
+  <main class="grid min-h-screen place-items-center bg-[var(--bg-soft)] px-6">
+    <form id="login-form" class="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+      <h1 class="text-2xl font-semibold">后台登录</h1>
+      <p class="mt-2 text-sm text-[var(--muted)]">登录后可以编辑页面、上传图片和管理导航。</p>
+      <label class="mt-6 block text-sm font-medium">邮箱</label>
+      <input name="email" type="email" required class="mt-2 w-full rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 outline-none focus:border-[var(--primary)]" />
+      <label class="mt-4 block text-sm font-medium">密码</label>
+      <input name="password" type="password" required class="mt-2 w-full rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 outline-none focus:border-[var(--primary)]" />
+      <button class="mt-6 w-full rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white" type="submit">登录</button>
+      <p id="message" class="mt-4 text-sm text-red-500"></p>
+    </form>
+  </main>
+  <script>
+    const form = document.querySelector('#login-form');
+    const message = document.querySelector('#message');
+    form?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const data = Object.fromEntries(new FormData(form));
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        message.textContent = json.error || '登录失败';
+        return;
+      }
+      localStorage.setItem('wiki_token', json.token);
+      location.href = '/admin';
+    });
+  </script>
+</BaseLayout>

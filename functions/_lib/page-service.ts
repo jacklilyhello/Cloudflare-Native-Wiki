@@ -1,0 +1,123 @@
+import type { AuthedUser, Env } from './types';
+import { createId, sha256 } from './id';
+import { ensureUniqueSlug, normalizeSlug, slugifyTitle } from './slug';
+import { renderMarkdown } from './markdown';
+import { CACHE_KEYS, putJson } from './cache';
+import { getNavigationTree } from './navigation';
+import { getPublicSettings } from './settings';
+import { renderDocument } from './render-page';
+
+export async function listPages(env: Env) {
+  const siteId = env.SITE_ID || 'site_default';
+  const result = await env.DB.prepare(
+    `SELECT id, title, slug, summary, status, updated_at, published_at
+     FROM pages
+     WHERE site_id = ?
+     ORDER BY updated_at DESC
+     LIMIT 200`
+  ).bind(siteId).all();
+  return result.results || [];
+}
+
+export async function getPage(env: Env, id: string) {
+  const siteId = env.SITE_ID || 'site_default';
+  return env.DB.prepare(`SELECT * FROM pages WHERE site_id = ? AND id = ? LIMIT 1`).bind(siteId, id).first<any>();
+}
+
+export async function getPageContent(env: Env, page: any) {
+  if (!page?.content_r2_key) return '';
+  const object = await env.ASSETS_BUCKET.get(page.content_r2_key);
+  return object ? await object.text() : '';
+}
+
+export async function createPage(env: Env, input: { title: string; slug?: string; summary?: string }, user: AuthedUser) {
+  const siteId = env.SITE_ID || 'site_default';
+  const id = createId('pg');
+  const slug = await ensureUniqueSlug(env, input.slug || slugifyTitle(input.title));
+  await env.DB.prepare(
+    `INSERT INTO pages (id, site_id, title, slug, normalized_slug, summary, status, created_by, updated_by)
+     VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?)`
+  ).bind(id, siteId, input.title, slug, normalizeSlug(slug), input.summary || '', user.id, user.id).run();
+  return getPage(env, id);
+}
+
+export async function savePageDraft(env: Env, id: string, input: any, user: AuthedUser) {
+  const page = await getPage(env, id);
+  if (!page) throw new Error('Page not found');
+  const siteId = env.SITE_ID || 'site_default';
+  const slug = await ensureUniqueSlug(env, input.slug || page.slug, id);
+  const versionNumberRow = await env.DB.prepare(`SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM page_versions WHERE page_id = ?`).bind(id).first<{ next: number }>();
+  const versionId = createId('ver');
+  const content = input.content || '';
+  const contentHash = await sha256(content);
+  const contentKey = `content/pages/${id}/${versionId}.md`;
+  await env.ASSETS_BUCKET.put(contentKey, content, { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO page_versions (id, site_id, page_id, version_number, title, slug, content_r2_key, content_hash, status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`
+    ).bind(versionId, siteId, id, versionNumberRow?.next || 1, input.title || page.title, slug, contentKey, contentHash, user.id),
+    env.DB.prepare(
+      `UPDATE pages SET title = ?, slug = ?, normalized_slug = ?, summary = ?, status = 'draft', content_r2_key = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+    ).bind(input.title || page.title, slug, normalizeSlug(slug), input.summary || '', contentKey, user.id, id)
+  ]);
+  return getPage(env, id);
+}
+
+export async function publishPage(env: Env, id: string, input: any, user: AuthedUser) {
+  const before = await getPage(env, id);
+  if (!before) throw new Error('Page not found');
+  const previousSlug = normalizeSlug(before.slug);
+
+  const page = await savePageDraft(env, id, input, user);
+  if (!page) throw new Error('Page not found');
+
+  const content = input.content || '';
+  const rendered = renderMarkdown(content);
+  const versionId = createId('ver');
+  const contentHash = await sha256(content);
+  const contentKey = `content/pages/${id}/${versionId}.md`;
+  const renderedKey = `rendered/pages/${id}/${versionId}.html`;
+  await env.ASSETS_BUCKET.put(contentKey, content, { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
+  await env.ASSETS_BUCKET.put(renderedKey, rendered.html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+
+  const siteId = env.SITE_ID || 'site_default';
+  const latest = await env.DB.prepare(`SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM page_versions WHERE page_id = ?`).bind(id).first<{ next: number }>();
+  const oldPage = await getPage(env, id);
+  const newSlug = normalizeSlug(input.slug || oldPage.slug);
+  const oldSlug = previousSlug;
+
+  const batch = [
+    env.DB.prepare(
+      `INSERT INTO page_versions (id, site_id, page_id, version_number, title, slug, content_r2_key, rendered_r2_key, content_hash, toc_json, status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?)`
+    ).bind(versionId, siteId, id, latest?.next || 1, input.title || oldPage.title, newSlug, contentKey, renderedKey, contentHash, JSON.stringify(rendered.toc), user.id),
+    env.DB.prepare(
+      `UPDATE pages SET title = ?, slug = ?, normalized_slug = ?, summary = ?, status = 'published', current_version_id = ?, content_r2_key = ?, rendered_r2_key = ?, toc_json = ?, reading_time = ?, word_count = ?, updated_by = ?, published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+    ).bind(input.title || oldPage.title, newSlug, normalizeSlug(newSlug), input.summary || '', versionId, contentKey, renderedKey, JSON.stringify(rendered.toc), rendered.readingTime, rendered.wordCount, user.id, id)
+  ];
+
+  if (oldSlug && oldSlug !== newSlug) {
+    batch.push(env.DB.prepare(
+      `INSERT OR REPLACE INTO slug_redirects (id, site_id, page_id, old_slug, old_normalized_slug, new_slug, redirect_type)
+       VALUES (?, ?, ?, ?, ?, ?, 301)`
+    ).bind(createId('redir'), siteId, id, oldSlug, normalizeSlug(oldSlug), newSlug));
+  }
+
+  await env.DB.batch(batch);
+  const updated = await getPage(env, id);
+  const navigation = await getNavigationTree(env);
+  const settings = await getPublicSettings(env);
+  const fullHtml = renderDocument({ env, settings, navigation, page: updated, html: rendered.html, toc: rendered.toc, slug: newSlug });
+  await putJson(env, CACHE_KEYS.pageBySlug(siteId, newSlug), {
+    page: updated,
+    html: rendered.html,
+    toc: rendered.toc,
+    fullHtml,
+    contentHash,
+    versionId,
+    cachedAt: Date.now()
+  });
+
+  return updated;
+}

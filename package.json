@@ -1,0 +1,40 @@
+{
+  "name": "cf-native-emby-wiki",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro check && astro build",
+    "preview": "wrangler pages dev dist --compatibility-date=2026-05-13",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name cf-native-emby-wiki",
+    "db:migrate:local": "wrangler d1 migrations apply cf_native_wiki --local",
+    "db:migrate:remote": "wrangler d1 migrations apply cf_native_wiki --remote",
+    "typecheck": "astro check",
+    "password:hash": "node scripts/generate-password-hash.mjs"
+  },
+  "dependencies": {
+    "@astrojs/check": "latest",
+    "@astrojs/react": "latest",
+    "@codemirror/lang-markdown": "latest",
+    "@tailwindcss/vite": "latest",
+    "@uiw/react-codemirror": "latest",
+    "astro": "latest",
+    "clsx": "latest",
+    "lucide-react": "latest",
+    "markdown-it": "latest",
+    "markdown-it-anchor": "latest",
+    "markdown-it-container": "latest",
+    "markdown-it-footnote": "latest",
+    "markdown-it-katex": "latest",
+    "markdown-it-task-lists": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "tailwindcss": "latest",
+    "typescript": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "wrangler": "latest"
+  }
+}

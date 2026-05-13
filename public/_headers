@@ -1,0 +1,11 @@
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/admin/*
+  Cache-Control: no-store
+
+/api/*
+  Cache-Control: no-store
+
+/docs/*
+  Cache-Control: public, max-age=60, s-maxage=86400

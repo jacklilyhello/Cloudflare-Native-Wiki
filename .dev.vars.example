@@ -1,0 +1,5 @@
+JWT_SECRET=dev-secret-change-me
+ADMIN_EMAIL=admin@example.com
+ADMIN_DEV_PASSWORD=admin123456
+# Prefer production secret instead of ADMIN_DEV_PASSWORD:
+# ADMIN_PASSWORD_HASH=pbkdf2:210000:<salt-base64url>:<hash-base64url>
