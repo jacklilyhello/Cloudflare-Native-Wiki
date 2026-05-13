@@ -15,22 +15,24 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     </form>
   </main>
   <script>
-    const form = document.querySelector('#login-form');
-    const message = document.querySelector('#message');
+    type LoginResponse = { token?: string; error?: string };
+    const form = document.querySelector('#login-form') as HTMLFormElement | null;
+    const message = document.querySelector('#message') as HTMLParagraphElement | null;
     form?.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (!form) return;
       const data = Object.fromEntries(new FormData(form));
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(data)
       });
-      const json = await res.json();
+      const json = await res.json() as LoginResponse;
       if (!res.ok) {
-        message.textContent = json.error || '登录失败';
+        if (message) message.textContent = json.error || '登录失败';
         return;
       }
-      localStorage.setItem('wiki_token', json.token);
+      if (json.token) localStorage.setItem('wiki_token', json.token);
       location.href = '/admin';
     });
   </script>

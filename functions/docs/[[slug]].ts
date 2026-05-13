@@ -70,7 +70,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const slug = normalizeSlug(raw);
   if (!slug) return Response.redirect(`${context.env.SITE_URL}/`, 302);
 
-  const cache = caches.default;
+  const cacheStorage = caches as unknown as { default: Cache };
+  const cache = cacheStorage.default;
   const cacheKey = new Request(context.request.url, context.request);
   const cached = await cache.match(cacheKey);
   if (cached) {

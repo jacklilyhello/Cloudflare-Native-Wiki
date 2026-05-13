@@ -9,7 +9,7 @@ function renderNav(nodes: NavNode[], currentSlug: string): string {
     const href = node.href || (node.page_id ? '#' : '');
     const normalized = href.replace(/^\/docs\//, '').replace(/^\//, '');
     const active = normalized === currentSlug ? ' active' : '';
-    const icon = node.icon ? `<span aria-hidden="true">${escapeHtml(icon)}</span>` : '';
+    const icon = node.icon ? `<span aria-hidden="true">${escapeHtml(node.icon)}</span>` : '';
     const children = node.children?.length ? `<div class="nav-children">${renderNav(node.children, currentSlug)}</div>` : '';
     const label = escapeHtml(node.label);
     const link = href ? `<a class="nav-link${active}" href="${escapeHtml(href)}">${icon}<span>${label}</span></a>` : `<span class="nav-link">${icon}<span>${label}</span></span>`;

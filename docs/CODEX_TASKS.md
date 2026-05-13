@@ -2,8 +2,10 @@
 
 ## Current execution note
 
-On 2026-05-13, local build verification was skipped because the current shell did not have `node`, `npm`, `pnpm`, or `bun`, and temporary Node.js download was not approved.
-Resume Tasks 0-2 in the later cloud development environment before considering the project build-verified.
+On 2026-05-13, Node 22 runtime was selected in the cloud environment and verification resumed.
+
+- Use `source ~/.nvm/nvm.sh && nvm use 22.22.2` before running project checks in this environment.
+- Continue Task 0 (`npm run typecheck`, `npm run build`) and then proceed to Tasks 1-2.
 
 ## Task 0 — Build verification
 
