@@ -2,6 +2,7 @@ import type { Env } from '../../_lib/types';
 import { json, error } from '../../_lib/http';
 import { requireUser } from '../../_lib/auth';
 import { createId, sha256 } from '../../_lib/id';
+import { writeAuditLog } from '../../_lib/audit';
 
 const MAX_SIZE = 8 * 1024 * 1024;
 const ALLOWED = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']);
@@ -48,6 +49,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     `INSERT INTO assets (id, site_id, filename, original_filename, mime_type, file_size, r2_key, public_url, uploaded_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(id, siteId, filename, file.name, file.type, file.size, r2Key, publicUrl, user.id).run();
+  await writeAuditLog(context.env, {
+    user,
+    request: context.request,
+    action: 'asset_upload',
+    entityType: 'asset',
+    entityId: id,
+    metadata: {
+      filename,
+      originalFilename: file.name,
+      mimeType: file.type,
+      fileSize: file.size,
+      r2Key
+    }
+  });
 
   return json({ id, url: publicUrl, public_url: publicUrl, markdown: `![${file.name}](${publicUrl})` }, { status: 201 });
 };

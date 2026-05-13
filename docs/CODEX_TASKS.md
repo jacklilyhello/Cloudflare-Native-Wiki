@@ -1,5 +1,10 @@
 # Codex Task Plan
 
+## Current execution note
+
+On 2026-05-13, local build verification was skipped because the current shell did not have `node`, `npm`, `pnpm`, or `bun`, and temporary Node.js download was not approved.
+Resume Tasks 0-2 in the later cloud development environment before considering the project build-verified.
+
 ## Task 0 — Build verification
 
 Run:
@@ -208,4 +213,3 @@ Admin:
 - publish status badges
 - version history drawer
 - settings form
-

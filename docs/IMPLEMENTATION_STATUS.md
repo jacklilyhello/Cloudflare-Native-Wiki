@@ -62,6 +62,7 @@ It is not a final production release. It is intended to give Codex a concrete ba
 - `/api/assets`
 - `/api/assets/upload`
 - `/api/revalidate`
+- Basic audit log writes for login success, page create/update/draft/publish/delete, navigation update, settings update and asset upload
 
 ### Data model
 
@@ -87,6 +88,20 @@ Tables included:
 
 The current code should be treated as a production-oriented scaffold, not as a fully verified release.
 
+### Deferred verification
+
+The local environment used on 2026-05-13 did not provide `node`, `npm`, `pnpm`, or `bun`.
+Because of that, the following verification tasks were not completed in this pass:
+
+- Dependency installation with `npm install`
+- Type checking with `npm run typecheck`
+- Production build with `npm run build`
+- Local D1 migration verification with `npm run db:migrate:local`
+- Local Pages Functions preview with `npm run preview`
+- Runtime smoke testing for `/`, `/admin/login`, `/admin`, `/api/settings/public`, `/robots.txt`, `/sitemap.xml`, and `/docs/:slug`
+
+Resume these checks in the cloud development environment before treating the MVP as build-verified.
+
 Likely areas Codex should inspect and harden:
 
 1. Type compatibility between Astro, Pages Functions and Cloudflare runtime types.
@@ -99,6 +114,7 @@ Likely areas Codex should inspect and harden:
 8. Version restore API/UI should be completed.
 9. Login rate limiting is not yet production-grade.
 10. Cloudflare Access verification is optional and not fully integrated.
+11. Audit logging is write-only at the API/service layer; admin audit log browsing UI is not implemented yet.
 
 ## Completion definition for v1
 
@@ -115,4 +131,3 @@ v1 is considered complete when:
 - Site settings affect public output.
 - Sitemap includes all published public pages.
 - Public page HTML is cached through KV and Cache API.
-

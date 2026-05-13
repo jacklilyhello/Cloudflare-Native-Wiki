@@ -66,6 +66,22 @@ npm run build
 
 Then fix any TypeScript, Astro, Cloudflare runtime, or dependency issues.
 
+## Deferred local-environment checks
+
+Status as of 2026-05-13:
+
+- Local `node`, `npm`, `pnpm`, and `bun` were not available in the current shell.
+- Temporary download of official Node.js for local verification was not approved.
+- The following checks were intentionally skipped and must be resumed in the later cloud development environment:
+  - `npm install`
+  - `npm run typecheck`
+  - `npm run build`
+  - `npm run db:migrate:local`
+  - `npm run preview`
+  - Cloudflare Pages Functions runtime smoke tests
+
+When cloud development starts, resume from `docs/CODEX_TASKS.md` Task 0, then Task 1 and Task 2 before adding larger features.
+
 ## Development priority
 
 ### Priority 1 — make MVP stable
@@ -127,4 +143,3 @@ Read these files in order:
 5. `docs/CACHE_RENDERING_STRATEGY.md`
 6. `docs/CLOUDFLARE_DEPLOYMENT.md`
 7. `docs/UI_UX_SPEC.md`
-

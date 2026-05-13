@@ -6,6 +6,7 @@ import { CACHE_KEYS, putJson } from './cache';
 import { getNavigationTree } from './navigation';
 import { getPublicSettings } from './settings';
 import { renderDocument } from './render-page';
+import { writeAuditLog } from './audit';
 
 export async function listPages(env: Env) {
   const siteId = env.SITE_ID || 'site_default';
@@ -38,6 +39,13 @@ export async function createPage(env: Env, input: { title: string; slug?: string
     `INSERT INTO pages (id, site_id, title, slug, normalized_slug, summary, status, created_by, updated_by)
      VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?)`
   ).bind(id, siteId, input.title, slug, normalizeSlug(slug), input.summary || '', user.id, user.id).run();
+  await writeAuditLog(env, {
+    user,
+    action: 'page_create',
+    entityType: 'page',
+    entityId: id,
+    metadata: { title: input.title, slug }
+  });
   return getPage(env, id);
 }
 
@@ -48,19 +56,35 @@ export async function savePageDraft(env: Env, id: string, input: any, user: Auth
   const slug = await ensureUniqueSlug(env, input.slug || page.slug, id);
   const versionNumberRow = await env.DB.prepare(`SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM page_versions WHERE page_id = ?`).bind(id).first<{ next: number }>();
   const versionId = createId('ver');
-  const content = input.content || '';
+  const content = typeof input.content === 'string' ? input.content : await getPageContent(env, page);
   const contentHash = await sha256(content);
   const contentKey = `content/pages/${id}/${versionId}.md`;
   await env.ASSETS_BUCKET.put(contentKey, content, { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
-  await env.DB.batch([
+  const statements = [
     env.DB.prepare(
       `INSERT INTO page_versions (id, site_id, page_id, version_number, title, slug, content_r2_key, content_hash, status, created_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`
-    ).bind(versionId, siteId, id, versionNumberRow?.next || 1, input.title || page.title, slug, contentKey, contentHash, user.id),
-    env.DB.prepare(
+    ).bind(versionId, siteId, id, versionNumberRow?.next || 1, input.title || page.title, slug, contentKey, contentHash, user.id)
+  ];
+
+  if (page.status === 'published') {
+    statements.push(env.DB.prepare(
+      `UPDATE pages SET content_r2_key = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+    ).bind(contentKey, user.id, id));
+  } else {
+    statements.push(env.DB.prepare(
       `UPDATE pages SET title = ?, slug = ?, normalized_slug = ?, summary = ?, status = 'draft', content_r2_key = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).bind(input.title || page.title, slug, normalizeSlug(slug), input.summary || '', contentKey, user.id, id)
-  ]);
+    ).bind(input.title || page.title, slug, normalizeSlug(slug), input.summary || '', contentKey, user.id, id));
+  }
+
+  await env.DB.batch(statements);
+  await writeAuditLog(env, {
+    user,
+    action: 'page_draft_save',
+    entityType: 'page',
+    entityId: id,
+    metadata: { versionId, slug, contentHash }
+  });
   return getPage(env, id);
 }
 
@@ -68,11 +92,9 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
   const before = await getPage(env, id);
   if (!before) throw new Error('Page not found');
   const previousSlug = normalizeSlug(before.slug);
-
-  const page = await savePageDraft(env, id, input, user);
-  if (!page) throw new Error('Page not found');
-
-  const content = input.content || '';
+  const siteId = env.SITE_ID || 'site_default';
+  const slug = await ensureUniqueSlug(env, input.slug || before.slug, id);
+  const content = typeof input.content === 'string' ? input.content : await getPageContent(env, before);
   const rendered = renderMarkdown(content);
   const versionId = createId('ver');
   const contentHash = await sha256(content);
@@ -81,20 +103,18 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
   await env.ASSETS_BUCKET.put(contentKey, content, { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
   await env.ASSETS_BUCKET.put(renderedKey, rendered.html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
 
-  const siteId = env.SITE_ID || 'site_default';
   const latest = await env.DB.prepare(`SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM page_versions WHERE page_id = ?`).bind(id).first<{ next: number }>();
-  const oldPage = await getPage(env, id);
-  const newSlug = normalizeSlug(input.slug || oldPage.slug);
+  const newSlug = normalizeSlug(slug);
   const oldSlug = previousSlug;
 
   const batch = [
     env.DB.prepare(
       `INSERT INTO page_versions (id, site_id, page_id, version_number, title, slug, content_r2_key, rendered_r2_key, content_hash, toc_json, status, created_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?)`
-    ).bind(versionId, siteId, id, latest?.next || 1, input.title || oldPage.title, newSlug, contentKey, renderedKey, contentHash, JSON.stringify(rendered.toc), user.id),
+    ).bind(versionId, siteId, id, latest?.next || 1, input.title || before.title, newSlug, contentKey, renderedKey, contentHash, JSON.stringify(rendered.toc), user.id),
     env.DB.prepare(
       `UPDATE pages SET title = ?, slug = ?, normalized_slug = ?, summary = ?, status = 'published', current_version_id = ?, content_r2_key = ?, rendered_r2_key = ?, toc_json = ?, reading_time = ?, word_count = ?, updated_by = ?, published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).bind(input.title || oldPage.title, newSlug, normalizeSlug(newSlug), input.summary || '', versionId, contentKey, renderedKey, JSON.stringify(rendered.toc), rendered.readingTime, rendered.wordCount, user.id, id)
+    ).bind(input.title || before.title, newSlug, normalizeSlug(newSlug), input.summary || before.summary || '', versionId, contentKey, renderedKey, JSON.stringify(rendered.toc), rendered.readingTime, rendered.wordCount, user.id, id)
   ];
 
   if (oldSlug && oldSlug !== newSlug) {
@@ -106,6 +126,8 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
 
   await env.DB.batch(batch);
   const updated = await getPage(env, id);
+  if (oldSlug) await env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, oldSlug));
+  await env.WIKI_KV.delete(CACHE_KEYS.sitemap(siteId));
   const navigation = await getNavigationTree(env);
   const settings = await getPublicSettings(env);
   const fullHtml = renderDocument({ env, settings, navigation, page: updated, html: rendered.html, toc: rendered.toc, slug: newSlug });
@@ -117,6 +139,13 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
     contentHash,
     versionId,
     cachedAt: Date.now()
+  });
+  await writeAuditLog(env, {
+    user,
+    action: 'page_publish',
+    entityType: 'page',
+    entityId: id,
+    metadata: { versionId, oldSlug, newSlug, contentHash }
   });
 
   return updated;

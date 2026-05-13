@@ -2,6 +2,7 @@ import type { Env } from '../_lib/types';
 import { json, readJson } from '../_lib/http';
 import { requireUser } from '../_lib/auth';
 import { CACHE_KEYS } from '../_lib/cache';
+import { writeAuditLog } from '../_lib/audit';
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const user = await requireUser(context);
@@ -23,5 +24,13 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   ).bind(siteId, key, String(value), user.id));
   if (statements.length) await context.env.DB.batch(statements);
   await context.env.WIKI_KV.delete(CACHE_KEYS.settings(siteId));
+  await writeAuditLog(context.env, {
+    user,
+    request: context.request,
+    action: 'settings_update',
+    entityType: 'settings',
+    entityId: siteId,
+    metadata: { keys: Object.keys(body.settings || {}) }
+  });
   return json({ ok: true });
 };

@@ -2,6 +2,7 @@ import type { Env } from '../../_lib/types';
 import { json, error, readJson } from '../../_lib/http';
 import { createId } from '../../_lib/id';
 import { signJwt, verifyPassword } from '../../_lib/auth';
+import { writeAuditLog } from '../../_lib/audit';
 
 type Body = { email: string; password: string };
 
@@ -32,6 +33,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   if (!ok) return error('Invalid credentials', 401);
 
   await context.env.DB.prepare(`UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(user.id).run();
+  await writeAuditLog(context.env, {
+    user: { id: user.id, email: user.email, role: user.role },
+    request: context.request,
+    action: 'login_success',
+    entityType: 'user',
+    entityId: user.id,
+    metadata: { email: user.email }
+  });
   const token = await signJwt(context.env, { id: user.id, email: user.email, role: user.role });
   return json({ token, user: { id: user.id, email: user.email, role: user.role } });
 };
