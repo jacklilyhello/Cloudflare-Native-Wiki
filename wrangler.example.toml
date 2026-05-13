@@ -1,0 +1,31 @@
+name = "cf-native-emby-wiki"
+compatibility_date = "2026-05-13"
+pages_build_output_dir = "dist"
+
+# Create these resources first, then replace the IDs below.
+# wrangler d1 create cf_native_wiki
+# wrangler kv namespace create WIKI_KV
+# wrangler r2 bucket create cf-native-emby-wiki-assets
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cf_native_wiki"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[[kv_namespaces]]
+binding = "WIKI_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[[r2_buckets]]
+binding = "ASSETS_BUCKET"
+bucket_name = "cf-native-emby-wiki-assets"
+
+[vars]
+SITE_ID = "site_default"
+SITE_URL = "https://wiki.example.com"
+JWT_ISSUER = "cf-native-emby-wiki"
+ADMIN_EMAIL = "admin@example.com"
+# Set these as secrets in production:
+# wrangler secret put JWT_SECRET
+# wrangler secret put ADMIN_PASSWORD_HASH
+# For local development only, you may set ADMIN_DEV_PASSWORD in .dev.vars
