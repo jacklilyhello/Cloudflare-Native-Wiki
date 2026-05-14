@@ -29,7 +29,9 @@ wrangler kv namespace create WIKI_KV
 wrangler r2 bucket create cf-native-emby-wiki-assets
 ```
 
-Update `wrangler.toml` with the real IDs.
+For production, prefer configuring bindings directly in Cloudflare Pages Dashboard and keep repository free of real resource IDs.
+
+If you need local Wrangler debugging, copy `wrangler.example.toml` to a local `wrangler.toml`, fill real IDs locally, and do not commit it.
 
 ## Secrets
 
@@ -129,3 +131,16 @@ Recommended for production:
 
 If enabled, the Worker/Function code should still verify Access JWT for protected routes, not only rely on UI access.
 
+
+
+## Production recommendation (Dashboard-first)
+
+To avoid deployment failures caused by placeholder IDs in tracked Wrangler config:
+
+- Do **not** commit production `wrangler.toml` / `wrangler.json` / `wrangler.jsonc`.
+- Keep only an example file (`wrangler.example.toml` or `wrangler.example.json`) in Git.
+- Configure Pages bindings in Dashboard with these exact binding names:
+  - D1: `DB`
+  - KV: `WIKI_KV`
+  - R2: `ASSETS_BUCKET`
+- Never commit real Cloudflare resource IDs (Account ID, D1 database ID, KV namespace ID).
