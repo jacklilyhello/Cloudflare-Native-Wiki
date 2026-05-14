@@ -42,7 +42,9 @@ wrangler kv namespace create WIKI_KV
 wrangler r2 bucket create cf-native-emby-wiki-assets
 ```
 
-把返回的 ID 填入 `wrangler.toml`。
+推荐仅在 Cloudflare Dashboard（Pages 项目设置）中配置 D1 / KV / R2 绑定，不要在公开仓库提交生产资源 ID。
+
+如需本地 wrangler 调试，可复制 `wrangler.example.toml` 为 `wrangler.toml` 并填入你自己的真实 ID；`wrangler.toml` 不应提交到 GitHub。
 
 设置密钥：
 
@@ -144,3 +146,15 @@ Read in this order:
 7. `docs/CACHE_RENDERING_STRATEGY.md`
 8. `docs/CLOUDFLARE_DEPLOYMENT.md`
 9. `docs/UI_UX_SPEC.md`
+
+
+## Cloudflare Pages 部署建议（生产）
+
+- 生产环境建议使用 Cloudflare Dashboard 配置：
+  - Build command: `npm run build`
+  - Build output directory: `dist`
+  - D1 binding: `DB`（资源名可对应 `cf_emby_wiki`）
+  - KV binding: `WIKI_KV`（资源名可对应 `CFWIKI_KV`）
+  - R2 binding: `ASSETS_BUCKET`（资源名可对应 `cf-embywiki-assets`）
+- 仓库仅保留 `wrangler.example.toml` 示例配置，避免 Pages 在部署时读取带占位符的生产配置。
+- 严禁提交真实 Cloudflare Account ID、D1 Database ID、KV Namespace ID 等敏感资源 ID。
