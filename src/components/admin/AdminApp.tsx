@@ -205,28 +205,58 @@ function PagesPanel() {
 }
 
 function NavigationPanel() {
-  const [tree, setTree] = useState('[]');
+  const [tree, setTree] = useState<any[]>([]);
   const [message, setMessage] = useState('');
+  const [editing, setEditing] = useState<any | null>(null);
+  const [jsonMode, setJsonMode] = useState('');
 
-  useEffect(() => {
-    api('/api/navigation').then((json) => setTree(JSON.stringify(json.tree, null, 2))).catch(console.error);
-  }, []);
+  const reload = () => api('/api/navigation').then((json) => { setTree(json.tree || []); setJsonMode(JSON.stringify(json.tree || [], null, 2)); });
+  useEffect(() => { reload().catch(console.error); }, []);
 
-  async function save() {
-    const parsed = JSON.parse(tree);
-    await api('/api/navigation', { method: 'PUT', body: JSON.stringify({ tree: parsed }) });
-    setMessage('导航树已保存');
+  const updateNode = (id: string, updater: (n: any) => any, nodes = tree): any[] => nodes.map((n) => n.id === id ? updater(n) : (n.children ? { ...n, children: updateNode(id, updater, n.children) } : n));
+  const deleteNode = (id: string, nodes = tree): any[] => nodes.filter((n) => n.id !== id).map((n) => n.children ? { ...n, children: deleteNode(id, n.children) } : n);
+
+  const save = async () => { await api('/api/navigation', { method: 'PUT', body: JSON.stringify({ tree }) }); setMessage('导航树已保存'); setJsonMode(JSON.stringify(tree, null, 2)); };
+  const addRoot = (type: 'section'|'page'|'external') => setTree([...tree, { id: `node-${Date.now()}`, type, title: '新节点', expanded: true, children: type === 'section' ? [] : undefined, slug: type === 'page' ? 'new-page' : undefined, href: type === 'external' ? 'https://' : undefined }]);
+
+  function Node({ node, parent }: { node: any; parent?: any[] }) {
+    const list = parent || tree; const idx = list.findIndex((x) => x.id === node.id);
+    const move = (dir: number) => { const copy = [...list]; const ni = idx + dir; if (ni < 0 || ni >= copy.length) return; [copy[idx], copy[ni]] = [copy[ni], copy[idx]]; setTree(parent ? updateNode((parent as any)[0]?.__root || '___', (n:any)=>n) : copy); if (parent) setTree((t)=>{const rec=(nodes:any[]):any[]=>nodes.map(n=>n.children===parent?{...n,children:copy}:({...n,children:n.children?rec(n.children):n.children})); return rec(t);}); };
+    return <li className="rounded-lg border border-[var(--border)] p-2 text-sm">
+      <div className="flex items-center justify-between gap-2"><span>{node.type==='section'?'📁':node.type==='external'?'🔗':'📄'} {node.title}</span>
+      <div className="flex gap-1">
+        <button onClick={() => setEditing(node)} className="px-2">编辑</button>
+        {node.type==='section' && <button onClick={() => setTree(updateNode(node.id, (n:any)=>({ ...n, children:[...(n.children||[]), { id:`node-${Date.now()}`, type:'page', title:'新页面', slug:'new-page' }] })))} className="px-2">添加子项</button>}
+        <button onClick={() => move(-1)} className="px-2">上移</button><button onClick={() => move(1)} className="px-2">下移</button>
+        <button onClick={() => confirm('确认删除?') && setTree(deleteNode(node.id))} className="px-2 text-red-500">删除</button>
+      </div></div>
+      {node.type==='section' && node.children?.length ? <ul className="ml-4 mt-2 space-y-2">{node.children.map((c:any)=><Node key={c.id} node={c} parent={node.children} />)}</ul> : null}
+    </li>;
   }
 
-  return (
-    <Panel title="导航树管理" desc="第一版提供 JSON 树编辑；后续可以替换为 dnd-kit 拖拽树。">
-      <textarea value={tree} onChange={(e) => setTree(e.target.value)} className="h-[520px] w-full rounded-xl border border-[var(--border)] bg-transparent p-3 font-mono text-sm" />
-      <div className="mt-3 flex items-center gap-3">
-        <button onClick={save} className="rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white">保存导航</button>
-        <span className="text-sm text-[var(--muted)]">{message}</span>
-      </div>
-    </Panel>
-  );
+  return <Panel title="导航树管理" desc="管理前台左侧 Wiki 导航，支持分组、页面链接、外部链接、拖拽排序和 JSON 导入导出。">
+    <div className="mb-3 flex flex-wrap gap-2">
+      <button onClick={() => addRoot('section')} className="rounded-xl border px-3 py-2 text-sm">新增分组</button>
+      <button onClick={() => addRoot('page')} className="rounded-xl border px-3 py-2 text-sm">新增页面链接</button>
+      <button onClick={() => addRoot('external')} className="rounded-xl border px-3 py-2 text-sm">新增外部链接</button>
+      <button onClick={save} className="rounded-xl bg-[var(--primary)] px-3 py-2 text-sm text-white">保存</button>
+      <button onClick={async()=>{const j=await api('/api/navigation/reset',{method:'POST'});setTree(j.tree);setJsonMode(JSON.stringify(j.tree,null,2));}} className="rounded-xl border px-3 py-2 text-sm">重置为 emby.wiki 默认结构</button>
+    </div>
+    <ul className="space-y-2">{tree.map((n:any)=><Node key={n.id} node={n} />)}</ul>
+    {editing && <div className="mt-4 rounded-xl border p-3 text-sm">
+      <div className="grid gap-2 md:grid-cols-2"><input value={editing.title||''} onChange={e=>setEditing({...editing,title:e.target.value})} className="rounded border px-2 py-1" />
+      <select value={editing.type} onChange={e=>setEditing({...editing,type:e.target.value})} className="rounded border px-2 py-1"><option value="section">section</option><option value="page">page</option><option value="external">external</option></select>
+      {editing.type==='page' && <input value={editing.slug||''} onChange={e=>setEditing({...editing,slug:e.target.value})} className="rounded border px-2 py-1" />}
+      {editing.type==='external' && <input value={editing.href||''} onChange={e=>setEditing({...editing,href:e.target.value})} className="rounded border px-2 py-1" />}
+      <input value={editing.icon||''} onChange={e=>setEditing({...editing,icon:e.target.value})} className="rounded border px-2 py-1" />
+      <label><input type="checkbox" checked={!!editing.expanded} onChange={e=>setEditing({...editing,expanded:e.target.checked})}/> expanded</label>
+      <label><input type="checkbox" checked={!!editing.hidden} onChange={e=>setEditing({...editing,hidden:e.target.checked})}/> hidden</label></div>
+      <button className="mt-2 rounded border px-3 py-1" onClick={()=>{setTree(updateNode(editing.id,()=>editing));setEditing(null);}}>应用编辑</button>
+    </div>}
+    <details className="mt-4"><summary>高级 JSON 模式</summary><textarea value={jsonMode} onChange={(e)=>setJsonMode(e.target.value)} className="mt-2 h-56 w-full rounded-xl border p-2 font-mono text-xs" />
+    <button className="mt-2 rounded border px-3 py-1" onClick={()=>{try{const parsed=JSON.parse(jsonMode);setTree(parsed);setMessage('JSON 已应用');}catch(e:any){setMessage(`JSON 错误: ${e.message}`);}}}>应用 JSON</button></details>
+    <div className="mt-2 text-sm text-[var(--muted)]">{message}</div>
+  </Panel>;
 }
 
 function AssetsPanel() {
