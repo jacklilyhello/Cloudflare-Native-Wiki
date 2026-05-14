@@ -1,5 +1,5 @@
 import type { Env } from '../../_lib/types';
-import { json, error } from '../../_lib/http';
+import { ok, error } from '../../_lib/http';
 import { requireUser } from '../../_lib/auth';
 import { createId, sha256 } from '../../_lib/id';
 import { writeAuditLog } from '../../_lib/audit';
@@ -64,5 +64,5 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
   });
 
-  return json({ id, url: publicUrl, public_url: publicUrl, markdown: `![${file.name}](${publicUrl})` }, { status: 201 });
+  return ok({ id, url: publicUrl, public_url: publicUrl, markdown: `![${file.name}](${publicUrl})` }, { status: 201 });
 };
