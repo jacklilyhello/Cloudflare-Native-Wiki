@@ -1,5 +1,5 @@
 import type { Env } from '../../_lib/types';
-import { json, error, readJson } from '../../_lib/http';
+import { ok, error, readJson } from '../../_lib/http';
 import { createId } from '../../_lib/id';
 import { signJwt, verifyPassword } from '../../_lib/auth';
 import { writeAuditLog } from '../../_lib/audit';
@@ -29,8 +29,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
 
   if (!user || !user.is_active) return error('Invalid credentials', 401);
-  const ok = await verifyPassword(context.env, password, user.password_hash || context.env.ADMIN_PASSWORD_HASH);
-  if (!ok) return error('Invalid credentials', 401);
+  const passwordOk = await verifyPassword(context.env, password, user.password_hash || context.env.ADMIN_PASSWORD_HASH);
+  if (!passwordOk) return error('Invalid credentials', 401);
 
   await context.env.DB.prepare(`UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(user.id).run();
   await writeAuditLog(context.env, {
@@ -42,5 +42,5 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     metadata: { email: user.email }
   });
   const token = await signJwt(context.env, { id: user.id, email: user.email, role: user.role });
-  return json({ token, user: { id: user.id, email: user.email, role: user.role } });
+  return ok({ token, user: { id: user.id, email: user.email, role: user.role } });
 };

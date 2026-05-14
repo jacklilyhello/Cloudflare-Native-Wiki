@@ -9,8 +9,12 @@ export function json(data: unknown, init: ResponseInit = {}) {
   });
 }
 
-export function error(message: string, status = 400) {
-  return json({ error: message }, { status });
+export function ok(data: unknown = {}, init: ResponseInit = {}) {
+  return json({ ok: true, data }, init);
+}
+
+export function error(message: string, status = 400, code = 'BAD_REQUEST') {
+  return json({ ok: false, error: { code, message } }, { status });
 }
 
 export async function readJson<T>(request: Request): Promise<T> {

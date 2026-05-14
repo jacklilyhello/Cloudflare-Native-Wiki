@@ -1,5 +1,5 @@
 import type { Env } from '../../_lib/types';
-import { json, error, readJson } from '../../_lib/http';
+import { ok, error, readJson } from '../../_lib/http';
 import { requireUser } from '../../_lib/auth';
 import { getPage, getPageContent } from '../../_lib/page-service';
 import { ensureUniqueSlug, normalizeSlug } from '../../_lib/slug';
@@ -17,7 +17,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const page = await getPage(context.env, getId(context));
   if (!page) return error('Page not found', 404);
   const content = await getPageContent(context.env, page);
-  return json({ page, content });
+  return ok({ page, content });
 };
 
 export const onRequestPatch: PagesFunction<Env> = async (context) => {
@@ -53,7 +53,7 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
     entityId: id,
     metadata: { oldSlug, newSlug }
   });
-  return json({ page: await getPage(context.env, id) });
+  return ok({ page: await getPage(context.env, id) });
 };
 
 export const onRequestDelete: PagesFunction<Env> = async (context) => {
@@ -76,5 +76,5 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
     entityId: id,
     metadata: { slug: page.slug, title: page.title }
   });
-  return json({ ok: true });
+  return ok({});
 };

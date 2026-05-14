@@ -25,6 +25,7 @@
     "@uiw/react-codemirror": "latest",
     "astro": "latest",
     "clsx": "latest",
+    "fflate": "^0.8.2",
     "lucide-react": "latest",
     "markdown-it": "latest",
     "markdown-it-anchor": "latest",

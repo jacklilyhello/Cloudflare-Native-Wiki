@@ -1,5 +1,5 @@
 import type { Env } from '../../_lib/types';
-import { json, readJson } from '../../_lib/http';
+import { ok, readJson } from '../../_lib/http';
 import { requireUser } from '../../_lib/auth';
 import { renderMarkdown } from '../../_lib/markdown';
 
@@ -8,5 +8,5 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   if (user instanceof Response) return user;
   const body = await readJson<{ markdown: string }>(context.request);
   const rendered = renderMarkdown(body.markdown || '');
-  return json(rendered);
+  return ok(rendered);
 };
