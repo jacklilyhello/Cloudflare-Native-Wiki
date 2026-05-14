@@ -15,7 +15,22 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     </form>
   </main>
   <script>
-    type LoginResponse = { token?: string; error?: string };
+    type LoginResponse = {
+      ok?: boolean;
+      data?: {
+        token?: string;
+        user?: unknown;
+        error?: string;
+      };
+      token?: string;
+      error?: string | { message?: string };
+    };
+    function getErrorMessage(json: LoginResponse) {
+      if (typeof json.error === 'string') return json.error;
+      if (json.error?.message) return json.error.message;
+      if (json.data?.error) return json.data.error;
+      return '登录失败';
+    }
     const form = document.querySelector('#login-form') as HTMLFormElement | null;
     const message = document.querySelector('#message') as HTMLParagraphElement | null;
     form?.addEventListener('submit', async (event) => {
@@ -28,11 +43,18 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
         body: JSON.stringify(data)
       });
       const json = await res.json() as LoginResponse;
-      if (!res.ok) {
-        if (message) message.textContent = json.error || '登录失败';
+      const token = json.data?.token || json.token;
+      if (!res.ok || json.ok === false) {
+        if (message) message.textContent = getErrorMessage(json);
         return;
       }
-      if (json.token) localStorage.setItem('wiki_token', json.token);
+
+      if (!token) {
+        if (message) message.textContent = '登录成功，但接口未返回 token，请检查 /api/auth/login 响应格式';
+        return;
+      }
+
+      localStorage.setItem('wiki_token', token);
       location.href = '/admin';
     });
   </script>

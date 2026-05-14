@@ -18,6 +18,10 @@ async function api(path: string, init: RequestInit = {}) {
   const res = await fetch(path, { ...init, headers });
   const text = await res.text();
   const json = text ? JSON.parse(text) : {};
+  if (res.status === 401) {
+    localStorage.removeItem('wiki_token');
+    if (location.pathname !== '/admin/login') location.href = '/admin/login';
+  }
   if (!res.ok || json?.ok === false) throw new Error(json?.error?.message || json?.error || `Request failed: ${res.status}`);
   return json.data ?? json;
 }
