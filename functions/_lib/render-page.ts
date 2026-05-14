@@ -4,16 +4,17 @@ function escapeHtml(input = '') {
   return input.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function renderNav(nodes: NavNode[], currentSlug: string): string {
+function renderNav(nodes: any[], currentSlug: string): string {
   return `<ul class="nav-list">${nodes.map((node) => {
-    const href = node.href || (node.page_id ? '#' : '');
-    const normalized = href.replace(/^\/docs\//, '').replace(/^\//, '');
+    const href = node.type === 'page' && node.slug ? `/docs/${encodeURIComponent(node.slug)}` : (node.href || '');
+    const normalized = decodeURIComponent(href.replace(/^\/docs\//, '').replace(/^\//, ''));
     const active = normalized === currentSlug ? ' active' : '';
     const icon = node.icon ? `<span aria-hidden="true">${escapeHtml(node.icon)}</span>` : '';
     const children = node.children?.length ? `<div class="nav-children">${renderNav(node.children, currentSlug)}</div>` : '';
-    const label = escapeHtml(node.label);
+    const label = escapeHtml(node.title || node.label || '');
     const link = href ? `<a class="nav-link${active}" href="${escapeHtml(href)}">${icon}<span>${label}</span></a>` : `<span class="nav-link">${icon}<span>${label}</span></span>`;
-    return `<li class="nav-item">${link}${children}</li>`;
+    const klass = node.type === 'section' ? 'nav-item nav-section' : 'nav-item';
+    return `<li class="${klass}">${link}${children}</li>`;
   }).join('')}</ul>`;
 }
 
@@ -69,7 +70,7 @@ export function renderDocument(input: {
     <a class="logo" href="/"><span class="logo-mark"></span><span>${escapeHtml(siteTitle)}</span></a>
   </header>
   <div class="layout">
-    <aside class="sidebar">${renderNav(input.navigation, input.slug)}</aside>
+    <aside class="sidebar"><div class="nav-title">浏览</div>${renderNav(input.navigation, input.slug)}</aside>
     <main class="content">
       <div class="article-shell">
         <nav class="breadcrumbs"><a href="/">首页</a> / <span>${escapeHtml(input.slug)}</span></nav>
