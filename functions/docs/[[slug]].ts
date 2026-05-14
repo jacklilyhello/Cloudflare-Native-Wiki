@@ -3,7 +3,7 @@ import { normalizeSlug } from '../_lib/slug';
 import { CACHE_KEYS, getJson, putJson } from '../_lib/cache';
 import { getNavigationTree } from '../_lib/navigation';
 import { getPublicSettings } from '../_lib/settings';
-import { renderDocument } from '../_lib/render-page';
+import { renderDocument, renderEmptySnapshotPage, renderNotFoundPage } from '../_lib/render-page';
 
 async function buildPageResponse(context: EventContext<Env, string, unknown>, slug: string) {
   const env = context.env;
@@ -35,14 +35,22 @@ async function buildPageResponse(context: EventContext<Env, string, unknown>, sl
       return Response.redirect(`${env.SITE_URL}/docs/${redirect.new_slug}`, redirect.redirect_type || 301);
     }
 
-    return new Response('Not found', { status: 404 });
+    const settings = await getPublicSettings(env);
+    return new Response(renderNotFoundPage({ env, settings, slug }), { status: 404, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=60' } });
   }
 
   const object = page.rendered_r2_key ? await env.ASSETS_BUCKET.get(page.rendered_r2_key) : null;
-  const html = object ? await object.text() : '<p>页面尚未生成渲染快照，请重新发布。</p>';
+  const settings = await getPublicSettings(env);
+  if (!object) {
+    return new Response(renderEmptySnapshotPage({ env, settings, pageTitle: page.title }), {
+      status: 200,
+      headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=30', 'x-wiki-cache': 'empty-snapshot' }
+    });
+  }
+
+  const html = await object.text();
   const toc = page.toc_json ? JSON.parse(page.toc_json) : [];
   const navigation = await getNavigationTree(env);
-  const settings = await getPublicSettings(env);
   const fullHtml = renderDocument({ env, settings, navigation, page, html, toc, slug });
 
   context.waitUntil(putJson(env, key, {

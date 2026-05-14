@@ -68,7 +68,7 @@ function createMarkdown() {
     });
   }
 
-  const defaultImage = md.renderer.rules.image || ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
+  const defaultImage = md.renderer.rules.image || ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
   md.renderer.rules.image = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
     token.attrSet('loading', 'lazy');

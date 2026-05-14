@@ -16,8 +16,8 @@ mkdirSync('.tmp', { recursive: true });
 writeFileSync('.tmp/getting-started.md', markdown);
 writeFileSync('.tmp/getting-started.html', html);
 
-execSync(`wrangler r2 object put cf-native-emby-wiki-assets/${contentKey} --file .tmp/getting-started.md --local`, { stdio: 'inherit' });
-execSync(`wrangler r2 object put cf-native-emby-wiki-assets/${renderedKey} --file .tmp/getting-started.html --local`, { stdio: 'inherit' });
+execSync(`npx wrangler r2 object put cf-native-emby-wiki-assets/${contentKey} --file .tmp/getting-started.md --local --config wrangler.example.toml`, { stdio: 'inherit' });
+execSync(`npx wrangler r2 object put cf-native-emby-wiki-assets/${renderedKey} --file .tmp/getting-started.html --local --config wrangler.example.toml`, { stdio: 'inherit' });
 
 const sql = `
 INSERT OR IGNORE INTO settings (site_id, key, value) VALUES
@@ -47,6 +47,6 @@ VALUES
 `;
 
 writeFileSync('.tmp/seed-local-demo.sql', sql);
-execSync('wrangler d1 execute cf_native_wiki --local --file .tmp/seed-local-demo.sql', { stdio: 'inherit' });
+execSync('npx wrangler d1 execute cf_native_wiki --local --file .tmp/seed-local-demo.sql --config wrangler.example.toml', { stdio: 'inherit' });
 
 console.log('Local seed completed: /docs/getting-started should be available.');

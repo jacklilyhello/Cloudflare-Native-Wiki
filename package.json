@@ -9,9 +9,9 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro check && astro build",
-    "preview": "wrangler pages dev dist --compatibility-date=2026-05-13",
+    "preview": "npx wrangler pages dev dist --compatibility-date=2026-05-13",
     "deploy": "npm run build && wrangler pages deploy dist --project-name cf-native-emby-wiki",
-    "db:migrate:local": "wrangler d1 migrations apply cf_native_wiki --local",
+    "db:migrate:local": "npx wrangler d1 migrations apply cf_native_wiki --local",
     "seed:local": "node scripts/seed-local-demo.mjs",
     "smoke:local": "bash scripts/smoke-local.sh",
     "db:migrate:remote": "wrangler d1 migrations apply cf_native_wiki --remote",

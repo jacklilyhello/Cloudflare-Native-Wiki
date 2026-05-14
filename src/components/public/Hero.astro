@@ -1,0 +1,16 @@
+---
+export interface Props {
+  siteTitle: string;
+  description: string;
+}
+const { siteTitle, description } = Astro.props;
+---
+<section class="hero container">
+  <p class="eyebrow">Cloudflare Native · Wiki 风格文档站</p>
+  <h1>{siteTitle}</h1>
+  <p class="hero-desc">{description}</p>
+  <div class="hero-actions">
+    <a href="/docs/getting-started" class="btn btn-primary">开始阅读</a>
+    <a href="/admin" class="btn btn-ghost">进入后台</a>
+  </div>
+</section>

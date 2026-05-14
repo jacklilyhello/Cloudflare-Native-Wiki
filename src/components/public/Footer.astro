@@ -1,0 +1,11 @@
+---
+export interface Props {
+  footerText: string;
+}
+const { footerText } = Astro.props;
+---
+<footer class="site-footer">
+  <div class="container footer-inner">
+    <p>{footerText}</p>
+  </div>
+</footer>

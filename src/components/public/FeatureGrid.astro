@@ -1,0 +1,21 @@
+---
+const features = [
+  { title: 'Markdown 文档', desc: '支持结构化目录、锚点、TOC、代码块与技术文档排版。' },
+  { title: 'Cloudflare Edge Cache', desc: '公开页面可结合 KV 与 Cache API 做高性能边缘缓存。' },
+  { title: 'D1 / R2 / KV', desc: 'D1 管理元数据，R2 管理内容与资源，KV 管理热数据缓存。' },
+  { title: 'Emby 教程站', desc: '定位 Emby / 媒体服务知识库，支持后台编辑与发布。' }
+];
+---
+<section class="container section">
+  <div class="section-head">
+    <h2>核心能力</h2>
+  </div>
+  <div class="feature-grid">
+    {features.map((item) => (
+      <article class="card">
+        <h3>{item.title}</h3>
+        <p>{item.desc}</p>
+      </article>
+    ))}
+  </div>
+</section>

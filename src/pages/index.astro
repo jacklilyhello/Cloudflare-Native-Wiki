@@ -1,26 +1,84 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import SiteHeader from '../components/public/SiteHeader.astro';
+import Hero from '../components/public/Hero.astro';
+import FeatureGrid from '../components/public/FeatureGrid.astro';
+import Footer from '../components/public/Footer.astro';
+
+type PublicSettings = {
+  site?: { title?: string; logo?: string; footer?: string };
+  seo?: { default_description?: string };
+};
+
+type ResolvedSettings = {
+  site: { title: string; logo: string; footer: string };
+  seo: { default_description: string };
+};
+
+const fallbackSettings: ResolvedSettings = {
+  site: {
+    title: 'Cloudflare Native Wiki',
+    logo: '',
+    footer: '© Cloudflare Native Wiki · Built with Astro + Cloudflare Pages'
+  },
+  seo: {
+    default_description: '一个 Cloudflare Native Markdown Wiki，面向 Emby 与媒体服务教程。'
+  }
+};
+
+let publicSettings: ResolvedSettings = fallbackSettings;
+
+try {
+  const res = await fetch(new URL('/api/settings/public', Astro.url));
+  if (res.ok) {
+    const data = (await res.json()) as PublicSettings;
+    publicSettings = {
+      site: {
+        title: data.site?.title || fallbackSettings.site.title,
+        logo: data.site?.logo || fallbackSettings.site.logo,
+        footer: data.site?.footer || fallbackSettings.site.footer
+      },
+      seo: {
+        default_description: data.seo?.default_description || fallbackSettings.seo.default_description
+      }
+    };
+  }
+} catch {
+  publicSettings = fallbackSettings;
+}
+
+const siteTitle = publicSettings.site.title ?? fallbackSettings.site.title;
+const siteLogo = publicSettings.site.logo ?? fallbackSettings.site.logo;
+const siteFooter = publicSettings.site.footer ?? fallbackSettings.site.footer;
+const siteDescription = publicSettings.seo.default_description ?? fallbackSettings.seo.default_description;
+
+const suggestedDocs = [
+  { title: '快速开始', href: '/docs/getting-started', desc: '了解站点结构、编辑与发布流程。' },
+  { title: '旧链接重定向示例', href: '/docs/getting-started-old', desc: '验证历史 slug 自动重定向能力。' },
+  { title: '后台管理入口', href: '/admin/login', desc: '登录后可管理页面、导航、资源与设置。' }
+];
 ---
-<BaseLayout title="Emby Wiki">
-  <main class="min-h-screen bg-[var(--bg)] text-[var(--text)]">
-    <section class="mx-auto flex min-h-screen max-w-6xl flex-col justify-center px-6 py-20">
-      <div class="mb-6 inline-flex w-fit rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--muted)]">
-        Cloudflare Native · Markdown Wiki · Edge Cached
-      </div>
-      <h1 class="max-w-3xl text-5xl font-semibold tracking-tight md:text-7xl">
-        Emby Wiki 教程站
-      </h1>
-      <p class="mt-6 max-w-2xl text-lg leading-8 text-[var(--muted)]">
-        一个完全基于 Cloudflare Pages、Functions、D1、R2、KV 和 Cache API 的轻量级文档系统。
-      </p>
-      <div class="mt-10 flex flex-wrap gap-3">
-        <a href="/docs/emby/getting-started" class="rounded-xl bg-[var(--primary)] px-5 py-3 text-sm font-medium text-white shadow-sm">
-          进入文档
-        </a>
-        <a href="/admin" class="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-sm font-medium">
-          后台管理
-        </a>
-      </div>
-    </section>
-  </main>
+<BaseLayout title={siteTitle} description={siteDescription}>
+  <div class="page-shell">
+    <SiteHeader siteTitle={siteTitle} siteLogo={siteLogo} />
+    <main>
+      <Hero siteTitle={siteTitle} description={siteDescription} />
+      <FeatureGrid />
+
+      <section class="container section">
+        <div class="section-head">
+          <h2>推荐阅读</h2>
+        </div>
+        <div class="doc-list">
+          {suggestedDocs.map((doc) => (
+            <a class="doc-item" href={doc.href}>
+              <h3>{doc.title}</h3>
+              <p>{doc.desc}</p>
+            </a>
+          ))}
+        </div>
+      </section>
+    </main>
+    <Footer footerText={siteFooter} />
+  </div>
 </BaseLayout>

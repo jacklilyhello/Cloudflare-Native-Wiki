@@ -2,38 +2,89 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 ---
 <BaseLayout title="登录 - Emby Wiki">
-  <main class="grid min-h-screen place-items-center bg-[var(--bg-soft)] px-6">
-    <form id="login-form" class="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
-      <h1 class="text-2xl font-semibold">后台登录</h1>
-      <p class="mt-2 text-sm text-[var(--muted)]">登录后可以编辑页面、上传图片和管理导航。</p>
-      <label class="mt-6 block text-sm font-medium">邮箱</label>
-      <input name="email" type="email" required class="mt-2 w-full rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 outline-none focus:border-[var(--primary)]" />
-      <label class="mt-4 block text-sm font-medium">密码</label>
-      <input name="password" type="password" required class="mt-2 w-full rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 outline-none focus:border-[var(--primary)]" />
-      <button class="mt-6 w-full rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white" type="submit">登录</button>
-      <p id="message" class="mt-4 text-sm text-red-500"></p>
-    </form>
+  <main class="login-page">
+    <section class="login-brand">
+      <p class="login-kicker">Cloudflare Native CMS</p>
+      <h1>Emby Wiki 控制台</h1>
+      <p>集中管理文档、导航、资源与站点设置。支持 Markdown 编辑、版本管理与边缘发布。</p>
+      <ul>
+        <li>Markdown 页面管理</li>
+        <li>导航树与站点配置</li>
+        <li>资源上传到 R2</li>
+      </ul>
+    </section>
+
+    <section class="login-panel">
+      <form id="login-form" class="login-card">
+        <h2>后台登录</h2>
+        <p>请输入管理员账号信息。</p>
+        <label>邮箱</label>
+        <input name="email" type="email" required autocomplete="email" />
+        <label>密码</label>
+        <input name="password" type="password" required autocomplete="current-password" />
+        <button id="submit-btn" type="submit">登录</button>
+        <p id="message" role="status" aria-live="polite"></p>
+      </form>
+    </section>
   </main>
+
+  <style>
+    .login-page{min-height:100vh;display:grid;grid-template-columns:1fr;}
+    .login-brand{display:none}
+    .login-panel{display:grid;place-items:center;padding:24px;background:var(--bg-soft)}
+    .login-card{width:min(420px,100%);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 8px 34px rgba(0,0,0,.08)}
+    .login-card h2{margin:0;font-size:1.5rem}
+    .login-card p{color:var(--muted);font-size:.92rem}
+    .login-card label{display:block;font-size:.88rem;margin-top:14px;margin-bottom:6px}
+    .login-card input{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text)}
+    .login-card button{width:100%;margin-top:16px;border:0;background:var(--primary);color:#fff;padding:10px 12px;border-radius:10px;cursor:pointer}
+    #message{margin-top:10px;font-size:.86rem;min-height:20px;color:#ef4444}
+    @media(min-width:960px){
+      .login-page{grid-template-columns:1.1fr 1fr}
+      .login-brand{display:block;padding:56px;background:linear-gradient(135deg,var(--surface),var(--bg-soft));border-right:1px solid var(--border)}
+      .login-kicker{display:inline-flex;padding:4px 10px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-size:12px;font-weight:700}
+      .login-brand h1{font-size:2.2rem;line-height:1.2;margin:16px 0 10px}
+      .login-brand p{color:var(--muted);max-width:42ch;line-height:1.7}
+      .login-brand ul{margin:20px 0 0;padding-left:18px;color:var(--muted);line-height:1.7}
+    }
+  </style>
+
   <script>
     type LoginResponse = { token?: string; error?: string };
     const form = document.querySelector('#login-form') as HTMLFormElement | null;
     const message = document.querySelector('#message') as HTMLParagraphElement | null;
+    const submitBtn = document.querySelector('#submit-btn') as HTMLButtonElement | null;
     form?.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!form) return;
       const data = Object.fromEntries(new FormData(form));
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      const json = await res.json() as LoginResponse;
-      if (!res.ok) {
-        if (message) message.textContent = json.error || '登录失败';
-        return;
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '登录中...';
       }
-      if (json.token) localStorage.setItem('wiki_token', json.token);
-      location.href = '/admin';
+      if (message) message.textContent = '';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const json = await res.json() as LoginResponse;
+        if (!res.ok) {
+          if (message) message.textContent = json.error || '登录失败';
+          return;
+        }
+        if (json.token) localStorage.setItem('wiki_token', json.token);
+        location.href = '/admin';
+      } catch {
+        if (message) message.textContent = '网络错误，请稍后重试';
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = '登录';
+        }
+      }
     });
   </script>
 </BaseLayout>
