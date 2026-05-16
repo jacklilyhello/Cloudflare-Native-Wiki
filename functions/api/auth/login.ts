@@ -41,6 +41,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     entityId: user.id,
     metadata: { email: user.email }
   });
-  const token = await signJwt(context.env, { id: user.id, email: user.email, role: user.role });
-  return ok({ token, user: { id: user.id, email: user.email, role: user.role } });
+  const ttlSetting = await context.env.DB.prepare(
+    `SELECT value FROM settings WHERE site_id = ? AND key = 'admin_session_ttl' LIMIT 1`
+  ).bind(siteId).first<{ value: string }>();
+  const ttl = Math.max(60, Number(ttlSetting?.value || '') || 60 * 60 * 8);
+  const token = await signJwt(context.env, { id: user.id, email: user.email, role: user.role }, ttl);
+  const cookie = [
+    `wiki_token=${token}`,
+    `Max-Age=${ttl}`,
+    'Path=/',
+    'HttpOnly',
+    'Secure',
+    'SameSite=Lax'
+  ].join('; ');
+  return ok(
+    { token, user: { id: user.id, email: user.email, role: user.role } },
+    { headers: { 'Set-Cookie': cookie } }
+  );
 };
