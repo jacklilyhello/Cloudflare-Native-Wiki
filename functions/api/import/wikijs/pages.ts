@@ -27,6 +27,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const pages = allPages.slice(offset, offset + limit);
   const history = body.history || [];
   let imported = 0;
+  const settingsRow = await context.env.DB.prepare(`SELECT value FROM settings WHERE site_id = ? AND key = 'allowed_iframe_domains' LIMIT 1`).bind(siteId).first<{ value: string }>();
+  const allowedIframeDomains = (settingsRow?.value || '').split(/[\n,]/).map((v) => v.trim()).filter(Boolean);
 
   for (const row of pages) {
     const slug = mapSlug(row.path);
@@ -34,7 +36,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const pageId = createId('pg');
     const versionId = createId('ver');
     const content = row.content || '';
-    const rendered = renderMarkdown(content);
+    const rendered = renderMarkdown(content, { allowedIframeDomains });
     const contentKey = `content/pages/${pageId}/${versionId}.md`;
     const renderedKey = `rendered/pages/${pageId}/${versionId}.html`;
     await context.env.ASSETS_BUCKET.put(contentKey, content, { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
@@ -55,7 +57,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     for (const h of pageHistory) {
       const hVer = createId('ver');
       const hContent = h.content || '';
-      const hRendered = renderMarkdown(hContent);
+      const hRendered = renderMarkdown(hContent, { allowedIframeDomains });
       const hContentKey = `content/pages/${pageId}/${hVer}.md`;
       const hRenderedKey = `rendered/pages/${pageId}/${hVer}.html`;
       await context.env.ASSETS_BUCKET.put(hContentKey, hContent, { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
