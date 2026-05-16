@@ -11,7 +11,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
   const wildcard = `%${q.toLowerCase()}%`;
   const result = await context.env.DB.prepare(
-    `SELECT id, title, slug, summary, excerpt, tags_json, published_at, updated_at
+    `SELECT id, title, slug, summary, meta_description, excerpt, tags_json, published_at, updated_at
      FROM pages
      WHERE site_id = ?
        AND status = 'published'
@@ -20,13 +20,14 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
          LOWER(title) LIKE ?
          OR LOWER(slug) LIKE ?
          OR LOWER(COALESCE(summary, '')) LIKE ?
+         OR LOWER(COALESCE(meta_description, '')) LIKE ?
          OR LOWER(COALESCE(excerpt, '')) LIKE ?
          OR LOWER(COALESCE(tags_json, '')) LIKE ?
          OR LOWER(COALESCE(search_text, '')) LIKE ?
        )
      ORDER BY published_at DESC, updated_at DESC
      LIMIT ?`
-  ).bind(siteId, wildcard, wildcard, wildcard, wildcard, wildcard, wildcard, limit).all<any>();
+  ).bind(siteId, wildcard, wildcard, wildcard, wildcard, wildcard, wildcard, wildcard, limit).all<any>();
 
   const pages = (result.results || []).map((row) => ({
     ...row,

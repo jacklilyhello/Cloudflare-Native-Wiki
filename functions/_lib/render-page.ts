@@ -32,10 +32,9 @@ export function renderDocument(input: {
   toc: any[];
   slug: string;
 }) {
-  const siteTitle = input.settings['site.title'] || 'Emby Wiki';
-  const settingsTitle = input.settings.site_title || input.settings['site.title'] || siteTitle;
-  const footer = input.settings['site.footer'] || '';
-  const title = input.page.meta_title || `${input.page.title} - ${settingsTitle}`;
+  const siteTitle = input.settings.site_title || input.settings['site.title'] || 'Emby Wiki';
+  const footer = input.settings.footer_text || input.settings['site.footer'] || '';
+  const title = input.page.meta_title || `${input.page.title} - ${siteTitle}`;
   const description = input.page.meta_description || input.page.summary || input.page.excerpt || input.settings.seo_description || input.settings['seo.default_description'] || '';
   const canonical = input.page.canonical_url || `${input.settings.site_url || input.env.SITE_URL}/docs/${input.slug}`;
   const ogTitle = input.page.og_title || input.settings.og_title || title;
@@ -50,7 +49,7 @@ export function renderDocument(input: {
     datePublished: input.page.published_at,
     dateModified: input.page.updated_at,
     mainEntityOfPage: canonical,
-    author: { '@type': 'Organization', name: settingsTitle }
+    author: { '@type': 'Organization', name: siteTitle }
   };
 
   return `<!doctype html>

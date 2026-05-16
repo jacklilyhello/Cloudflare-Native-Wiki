@@ -125,10 +125,11 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
   const rendered = renderMarkdown(content);
   const excerpt = buildExcerpt(content, input.summary || before.summary || '');
   const tags = Array.isArray(input.tags) ? input.tags.filter((item: unknown) => typeof item === 'string').map((item: string) => item.trim()).filter(Boolean) : [];
+  const description = typeof input.meta_description === 'string' ? input.meta_description : (before.meta_description || '');
   const searchText = buildSearchText({
     title: input.title || before.title,
     slug: newSlug,
-    summary: input.summary || before.summary || '',
+    summary: `${input.summary || before.summary || ''} ${description}`.trim(),
     excerpt,
     tags,
     content
@@ -164,6 +165,7 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
   const updated = await getPage(env, id);
   if (oldSlug) await env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, oldSlug));
   await env.WIKI_KV.delete(CACHE_KEYS.sitemap(siteId));
+  await env.WIKI_KV.delete(CACHE_KEYS.robots(siteId));
   const navigation = await getNavigationTree(env);
   const settings = await getPublicSettings(env);
   const fullHtml = renderDocument({ env, settings, navigation, page: updated, html: rendered.html, toc: rendered.toc, slug: newSlug });
