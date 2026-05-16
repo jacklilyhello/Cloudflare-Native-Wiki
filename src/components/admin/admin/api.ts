@@ -12,6 +12,12 @@ export async function api(path: string, init: RequestInit = {}) {
     localStorage.removeItem('wiki_token');
     if (location.pathname !== '/admin/login') location.href = '/admin/login';
   }
-  if (!res.ok || json?.ok === false) throw new Error(json?.error?.message || json?.error || `Request failed: ${res.status}`);
+  const isApiError = json?.success === false || json?.ok === false;
+  if (!res.ok || isApiError) {
+    const statusPart = `HTTP ${res.status}`;
+    const codePart = json?.error?.code ? `[${json.error.code}]` : '';
+    const messagePart = json?.error?.message || json?.error || `Request failed`;
+    throw new Error([statusPart, codePart, messagePart].filter(Boolean).join(' '));
+  }
   return json.data ?? json;
 }
