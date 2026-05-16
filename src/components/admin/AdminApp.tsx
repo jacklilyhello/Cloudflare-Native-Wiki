@@ -12,7 +12,12 @@ import { ToastView, useToasts } from './admin/shared';
 export default function AdminApp() {
   const [tab, setTab] = useState<'dashboard' | 'pages' | 'navigation' | 'assets' | 'settings' | 'versions' | 'auditLogs'>('dashboard');
   const { toasts, push } = useToasts();
-  useEffect(() => { if (!localStorage.getItem('wiki_token')) location.href = '/admin/login'; }, []);
+  useEffect(() => {
+    api('/api/settings').catch(() => {
+      sessionStorage.setItem('wiki_session_expired', '1');
+      if (location.pathname !== '/admin/login') location.href = '/admin/login';
+    });
+  }, []);
 
   const tabs = [
     { id: 'dashboard', label: '总览', icon: LayoutPanelTop },

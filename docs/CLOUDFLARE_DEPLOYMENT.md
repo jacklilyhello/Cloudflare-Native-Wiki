@@ -144,3 +144,10 @@ To avoid deployment failures caused by placeholder IDs in tracked Wrangler confi
   - KV: `WIKI_KV`
   - R2: `ASSETS_BUCKET`
 - Never commit real Cloudflare resource IDs (Account ID, D1 database ID, KV namespace ID).
+
+
+## Login security notes
+
+- Login rate limiting relies on the client IP and expects Cloudflare to provide the `CF-Connecting-IP` header at the edge.
+- Ensure requests to `functions/api/auth/login.ts` keep `CF-Connecting-IP` available (avoid stripping this header in upstream proxies).
+
