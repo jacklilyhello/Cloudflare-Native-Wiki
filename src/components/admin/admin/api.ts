@@ -14,10 +14,11 @@ export async function api(path: string, init: RequestInit = {}) {
   }
   const isApiError = json?.success === false || json?.ok === false;
   if (!res.ok || isApiError) {
-    const statusPart = `HTTP ${res.status}`;
-    const codePart = json?.error?.code ? `[${json.error.code}]` : '';
-    const messagePart = json?.error?.message || json?.error || `Request failed`;
-    throw new Error([statusPart, codePart, messagePart].filter(Boolean).join(' '));
+    const message = json?.error?.message || json?.error || 'Request failed';
+    const err = new Error(message) as Error & { status?: number; code?: string };
+    err.status = res.status;
+    err.code = json?.error?.code || 'REQUEST_FAILED';
+    throw err;
   }
   return json.data ?? json;
 }

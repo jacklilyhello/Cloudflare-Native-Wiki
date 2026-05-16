@@ -1,7 +1,7 @@
 import type { Env } from '../../_lib/types';
 import { ok, error, readJson } from '../../_lib/http';
 import { requireUser } from '../../_lib/auth';
-import { getPage, getPageContent } from '../../_lib/page-service';
+import { getPage, getPageEditorPayload } from '../../_lib/page-service';
 import { ensureUniqueSlug, normalizeSlug } from '../../_lib/slug';
 import { CACHE_KEYS } from '../../_lib/cache';
 import { writeAuditLog } from '../../_lib/audit';
@@ -14,10 +14,10 @@ function getId(context: EventContext<Env, string, unknown>) {
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const user = await requireUser(context);
   if (user instanceof Response) return user;
-  const page = await getPage(context.env, getId(context));
-  if (!page) return error('Page not found', 404);
-  const content = await getPageContent(context.env, page);
-  return ok({ page, content });
+  const pageId = getId(context);
+  const page = await getPageEditorPayload(context.env, pageId);
+  if (!page) return error('Page not found', 404, 'PAGE_NOT_FOUND', { pageId });
+  return ok({ page });
 };
 
 export const onRequestPatch: PagesFunction<Env> = async (context) => {
