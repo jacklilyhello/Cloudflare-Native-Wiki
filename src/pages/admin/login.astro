@@ -33,6 +33,10 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     }
     const form = document.querySelector('#login-form') as HTMLFormElement | null;
     const message = document.querySelector('#message') as HTMLParagraphElement | null;
+    if (sessionStorage.getItem('wiki_session_expired') && message) {
+      message.textContent = '会话已过期，请重新登录。';
+      sessionStorage.removeItem('wiki_session_expired');
+    }
     form?.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!form) return;
@@ -40,7 +44,8 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        credentials: 'include'
       });
       const json = await res.json() as LoginResponse;
       const token = json.data?.token || json.token;
@@ -49,12 +54,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
         return;
       }
 
-      if (!token) {
-        if (message) message.textContent = '登录成功，但接口未返回 token，请检查 /api/auth/login 响应格式';
-        return;
-      }
-
-      localStorage.setItem('wiki_token', token);
+      if (token) localStorage.setItem('wiki_token', token);
       location.href = '/admin';
     });
   </script>

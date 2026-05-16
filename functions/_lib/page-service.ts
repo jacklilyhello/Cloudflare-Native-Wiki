@@ -8,6 +8,19 @@ import { getPublicSettings } from './settings';
 import { renderDocument } from './render-page';
 import { writeAuditLog } from './audit';
 
+type PublishPipelineStep = 'r2-write' | 'd1-write' | 'kv-refresh' | 'cache-rebuild';
+
+class PublishRetryableError extends Error {
+  code: string;
+  failedStep: PublishPipelineStep;
+  constructor(message: string, failedStep: PublishPipelineStep) {
+    super(message);
+    this.name = 'PublishRetryableError';
+    this.code = 'PUBLISH_RETRYABLE';
+    this.failedStep = failedStep;
+  }
+}
+
 export async function listPages(env: Env) {
   const siteId = env.SITE_ID || 'site_default';
   const result = await env.DB.prepare(
@@ -95,13 +108,28 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
   const siteId = env.SITE_ID || 'site_default';
   const slug = await ensureUniqueSlug(env, input.slug || before.slug, id);
   const content = typeof input.content === 'string' ? input.content : await getPageContent(env, before);
-  const rendered = renderMarkdown(content);
+  const settingsRow = await env.DB.prepare(`SELECT value FROM settings WHERE site_id = ? AND key = 'allowed_iframe_domains' LIMIT 1`).bind(siteId).first<{ value: string }>();
+  const allowedIframeDomains = (settingsRow?.value || '').split(/[\n,]/).map((v) => v.trim()).filter(Boolean);
+  const rendered = renderMarkdown(content, { allowedIframeDomains });
   const versionId = createId('ver');
   const contentHash = await sha256(content);
   const contentKey = `content/pages/${id}/${versionId}.md`;
   const renderedKey = `rendered/pages/${id}/${versionId}.html`;
-  await env.ASSETS_BUCKET.put(contentKey, content, { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
-  await env.ASSETS_BUCKET.put(renderedKey, rendered.html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+  let pipelineStep: PublishPipelineStep = 'r2-write';
+  let compensationExecuted = false;
+  try {
+    await env.ASSETS_BUCKET.put(contentKey, content, { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
+    await env.ASSETS_BUCKET.put(renderedKey, rendered.html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+  } catch (error) {
+    await writeAuditLog(env, {
+      user,
+      action: 'page_publish_failed',
+      entityType: 'page',
+      entityId: id,
+      metadata: { versionId, oldSlug: previousSlug, newSlug: normalizeSlug(slug), contentHash, pipelineStep, failedStep: pipelineStep, compensationExecuted }
+    });
+    throw error;
+  }
 
   const latest = await env.DB.prepare(`SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM page_versions WHERE page_id = ?`).bind(id).first<{ next: number }>();
   const newSlug = normalizeSlug(slug);
@@ -124,28 +152,88 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
     ).bind(createId('redir'), siteId, id, oldSlug, normalizeSlug(oldSlug), newSlug));
   }
 
-  await env.DB.batch(batch);
+  pipelineStep = 'd1-write';
+  try {
+    await env.DB.batch(batch);
+  } catch (error) {
+    compensationExecuted = true;
+    await Promise.allSettled([
+      env.ASSETS_BUCKET.delete(contentKey),
+      env.ASSETS_BUCKET.delete(renderedKey)
+    ]);
+    await writeAuditLog(env, {
+      user,
+      action: 'page_publish_failed',
+      entityType: 'page',
+      entityId: id,
+      metadata: { versionId, oldSlug, newSlug, contentHash, pipelineStep, failedStep: pipelineStep, compensationExecuted }
+    });
+    throw error;
+  }
   const updated = await getPage(env, id);
-  if (oldSlug) await env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, oldSlug));
-  await env.WIKI_KV.delete(CACHE_KEYS.sitemap(siteId));
-  const navigation = await getNavigationTree(env);
-  const settings = await getPublicSettings(env);
-  const fullHtml = renderDocument({ env, settings, navigation, page: updated, html: rendered.html, toc: rendered.toc, slug: newSlug });
-  await putJson(env, CACHE_KEYS.pageBySlug(siteId, newSlug), {
-    page: updated,
-    html: rendered.html,
-    toc: rendered.toc,
-    fullHtml,
-    contentHash,
-    versionId,
-    cachedAt: Date.now()
-  });
+  pipelineStep = 'kv-refresh';
+  try {
+    if (oldSlug) await env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, oldSlug));
+    await env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, newSlug));
+    await env.WIKI_KV.delete(CACHE_KEYS.navigation(siteId));
+    await env.WIKI_KV.delete(CACHE_KEYS.sitemap(siteId));
+    await env.WIKI_KV.delete(CACHE_KEYS.settings(siteId));
+  } catch {
+    await writeAuditLog(env, {
+      user,
+      action: 'page_publish_failed',
+      entityType: 'page',
+      entityId: id,
+      metadata: { versionId, oldSlug, newSlug, contentHash, pipelineStep, failedStep: pipelineStep, compensationExecuted }
+    });
+    throw new PublishRetryableError('KV refresh failed, please retry', pipelineStep);
+  }
+
+  pipelineStep = 'cache-rebuild';
+  try {
+    const navigation = await getNavigationTree(env);
+    const settings = await getPublicSettings(env);
+    const fullHtml = renderDocument({ env, settings, navigation, page: updated, html: rendered.html, toc: rendered.toc, slug: newSlug });
+    await putJson(env, CACHE_KEYS.pageBySlug(siteId, newSlug), {
+      page: updated,
+      html: rendered.html,
+      toc: rendered.toc,
+      fullHtml,
+      contentHash,
+      versionId,
+      cachedAt: Date.now()
+    });
+    const cache = (caches as unknown as { default: Cache }).default;
+    const oldUrl = `${env.SITE_URL}/docs/${oldSlug}`;
+    const newUrl = `${env.SITE_URL}/docs/${newSlug}`;
+    if (oldSlug && oldSlug !== newSlug) {
+      await cache.delete(new Request(oldUrl, { method: 'GET' }));
+    }
+    await cache.delete(new Request(newUrl, { method: 'GET' }));
+    await cache.put(new Request(newUrl, { method: 'GET' }), new Response(fullHtml, {
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'public, max-age=60, s-maxage=86400',
+        'etag': `"${contentHash || versionId}"`,
+        'x-wiki-cache': 'edge-refresh'
+      }
+    }));
+  } catch {
+    await writeAuditLog(env, {
+      user,
+      action: 'page_publish_failed',
+      entityType: 'page',
+      entityId: id,
+      metadata: { versionId, oldSlug, newSlug, contentHash, pipelineStep, failedStep: pipelineStep, compensationExecuted }
+    });
+    throw new PublishRetryableError('Cache rebuild failed, please retry', pipelineStep);
+  }
   await writeAuditLog(env, {
     user,
     action: 'page_publish',
     entityType: 'page',
     entityId: id,
-    metadata: { versionId, oldSlug, newSlug, contentHash }
+    metadata: { versionId, oldSlug, newSlug, contentHash, pipelineStep, failedStep: null, compensationExecuted }
   });
 
   return updated;
