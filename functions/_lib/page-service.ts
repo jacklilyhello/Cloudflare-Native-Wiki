@@ -95,7 +95,9 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
   const siteId = env.SITE_ID || 'site_default';
   const slug = await ensureUniqueSlug(env, input.slug || before.slug, id);
   const content = typeof input.content === 'string' ? input.content : await getPageContent(env, before);
-  const rendered = renderMarkdown(content);
+  const settingsRow = await env.DB.prepare(`SELECT value FROM settings WHERE site_id = ? AND key = 'allowed_iframe_domains' LIMIT 1`).bind(siteId).first<{ value: string }>();
+  const allowedIframeDomains = (settingsRow?.value || '').split(/[\n,]/).map((v) => v.trim()).filter(Boolean);
+  const rendered = renderMarkdown(content, { allowedIframeDomains });
   const versionId = createId('ver');
   const contentHash = await sha256(content);
   const contentKey = `content/pages/${id}/${versionId}.md`;
