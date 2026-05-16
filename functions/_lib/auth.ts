@@ -51,7 +51,10 @@ export async function verifyJwt(env: Env, token: string): Promise<AuthedUser | n
 
 export async function requireUser(context: EventContext<Env, string, unknown>): Promise<AuthedUser | Response> {
   const auth = context.request.headers.get('authorization') || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  const bearerToken = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  const cookie = context.request.headers.get('cookie') || '';
+  const cookieToken = cookie.split(';').map((item) => item.trim()).find((item) => item.startsWith('wiki_token='))?.slice('wiki_token='.length) || '';
+  const token = bearerToken || cookieToken;
   if (!token) return error('Unauthorized', 401);
   const user = await verifyJwt(context.env, token);
   if (!user) return error('Unauthorized', 401);
