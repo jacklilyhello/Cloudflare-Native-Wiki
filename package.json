@@ -35,7 +35,10 @@
     "markdown-it-task-lists": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "@dnd-kit/core": "latest",
+    "@dnd-kit/sortable": "latest",
+    "@dnd-kit/utilities": "latest"
   },
   "devDependencies": {
     "@astrojs/tailwind": "^6.0.2",
