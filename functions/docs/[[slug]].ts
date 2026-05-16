@@ -5,7 +5,12 @@ import { getNavigationTree } from '../_lib/navigation';
 import { getPublicSettings } from '../_lib/settings';
 import { renderDocument } from '../_lib/render-page';
 
-async function buildPageResponse(context: EventContext<Env, string, unknown>, slug: string) {
+async function buildPageResponse(
+  context: EventContext<Env, string, unknown>,
+  slug: string,
+  cache: Cache,
+  cacheKey: Request
+) {
   const env = context.env;
   const siteId = env.SITE_ID || 'site_default';
   const key = CACHE_KEYS.pageBySlug(siteId, slug);
@@ -46,15 +51,25 @@ async function buildPageResponse(context: EventContext<Env, string, unknown>, sl
   const settings = await getPublicSettings(env);
   const fullHtml = renderDocument({ env, settings, navigation, page, html, toc, slug });
 
-  context.waitUntil(putJson(env, key, {
-    page,
-    html,
-    toc,
-    fullHtml,
-    contentHash: page.current_version_id,
-    versionId: page.current_version_id,
-    cachedAt: Date.now()
-  }));
+  context.waitUntil(Promise.all([
+    putJson(env, key, {
+      page,
+      html,
+      toc,
+      fullHtml,
+      contentHash: page.current_version_id,
+      versionId: page.current_version_id,
+      cachedAt: Date.now()
+    }),
+    cache.put(cacheKey, new Response(fullHtml, {
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'public, max-age=60, s-maxage=86400',
+        'etag': `"${page.current_version_id || page.updated_at}"`,
+        'x-wiki-cache': 'edge-fill'
+      }
+    }))
+  ]));
 
   return new Response(fullHtml, {
     headers: {
@@ -81,7 +96,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     return res;
   }
 
-  const response = await buildPageResponse(context, slug);
-  if (response.ok) context.waitUntil(cache.put(cacheKey, response.clone()));
+  const response = await buildPageResponse(context, slug, cache, cacheKey);
+  if (response.ok && response.headers.get('x-wiki-cache') === 'kv-hit') {
+    context.waitUntil(cache.put(cacheKey, response.clone()));
+  }
   return response;
 };

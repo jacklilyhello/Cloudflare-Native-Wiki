@@ -138,8 +138,21 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
   const contentHash = await sha256(content);
   const contentKey = `content/pages/${id}/${versionId}.md`;
   const renderedKey = `rendered/pages/${id}/${versionId}.html`;
-  await env.ASSETS_BUCKET.put(contentKey, content, { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
-  await env.ASSETS_BUCKET.put(renderedKey, rendered.html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+  let pipelineStep: PublishPipelineStep = 'r2-write';
+  let compensationExecuted = false;
+  try {
+    await env.ASSETS_BUCKET.put(contentKey, content, { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
+    await env.ASSETS_BUCKET.put(renderedKey, rendered.html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+  } catch (error) {
+    await writeAuditLog(env, {
+      user,
+      action: 'page_publish_failed',
+      entityType: 'page',
+      entityId: id,
+      metadata: { versionId, oldSlug: previousSlug, newSlug: normalizeSlug(slug), contentHash, pipelineStep, failedStep: pipelineStep, compensationExecuted }
+    });
+    throw error;
+  }
 
   const latest = await env.DB.prepare(`SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM page_versions WHERE page_id = ?`).bind(id).first<{ next: number }>();
   const oldSlug = previousSlug;
@@ -161,7 +174,24 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
     ).bind(createId('redir'), siteId, id, oldSlug, normalizeSlug(oldSlug), newSlug));
   }
 
-  await env.DB.batch(batch);
+  pipelineStep = 'd1-write';
+  try {
+    await env.DB.batch(batch);
+  } catch (error) {
+    compensationExecuted = true;
+    await Promise.allSettled([
+      env.ASSETS_BUCKET.delete(contentKey),
+      env.ASSETS_BUCKET.delete(renderedKey)
+    ]);
+    await writeAuditLog(env, {
+      user,
+      action: 'page_publish_failed',
+      entityType: 'page',
+      entityId: id,
+      metadata: { versionId, oldSlug, newSlug, contentHash, pipelineStep, failedStep: pipelineStep, compensationExecuted }
+    });
+    throw error;
+  }
   const updated = await getPage(env, id);
   if (oldSlug) await env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, oldSlug));
   await env.WIKI_KV.delete(CACHE_KEYS.sitemap(siteId));
@@ -183,7 +213,7 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
     action: 'page_publish',
     entityType: 'page',
     entityId: id,
-    metadata: { versionId, oldSlug, newSlug, contentHash }
+    metadata: { versionId, oldSlug, newSlug, contentHash, pipelineStep, failedStep: null, compensationExecuted }
   });
 
   return updated;
