@@ -14,6 +14,17 @@ function extFromFilename(filename: string) {
   return /^[a-z0-9]+$/.test(ext) ? ext : '';
 }
 
+function parseAllowedMimeTypes(raw: string | undefined) {
+  if (!raw) return DEFAULT_ALLOWED_MIME_TYPES;
+  const trimmed = raw.trim();
+  if (!trimmed) return DEFAULT_ALLOWED_MIME_TYPES;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) return parsed.map((s) => String(s).trim()).filter(Boolean);
+  } catch {}
+  return trimmed.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+}
+
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const user = await requireUser(context);
   if (user instanceof Response) return user;
@@ -27,10 +38,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   ).bind(siteId).all<{ key: string; value: string }>();
   const settings = Object.fromEntries((settingsRows.results || []).map((r) => [r.key, r.value]));
   const maxSizeMb = Number(settings.upload_max_size_mb || DEFAULT_MAX_SIZE_MB) || DEFAULT_MAX_SIZE_MB;
-  const allowedMimeTypes = String(settings.upload_allowed_mime_types || DEFAULT_ALLOWED_MIME_TYPES.join(','))
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const allowedMimeTypes = parseAllowedMimeTypes(settings.upload_allowed_mime_types);
   const allowed = new Set(allowedMimeTypes);
   if (file.size > maxSizeMb * 1024 * 1024) return error(`file too large (max ${maxSizeMb}MB)`, 413);
   if (!file.type || !allowed.has(file.type)) return error('unsupported file type', 415);
