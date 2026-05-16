@@ -59,6 +59,34 @@ export async function getPageContent(env: Env, page: any) {
   return object ? await object.text() : '';
 }
 
+export async function getPageEditorPayload(env: Env, pageId: string) {
+  const page = await getPage(env, pageId);
+  if (!page) return null;
+  const [markdown, html, latestVersion, publishedVersion] = await Promise.all([
+    getPageContent(env, page),
+    page.rendered_r2_key
+      ? env.ASSETS_BUCKET.get(page.rendered_r2_key).then((obj) => obj?.text() || '')
+      : Promise.resolve(''),
+    env.DB.prepare(`SELECT id FROM page_versions WHERE page_id = ? ORDER BY version_number DESC LIMIT 1`).bind(pageId).first<{ id: string }>(),
+    env.DB.prepare(`SELECT id FROM page_versions WHERE page_id = ? AND status = 'published' ORDER BY version_number DESC LIMIT 1`).bind(pageId).first<{ id: string }>()
+  ]);
+  return {
+    id: page.id,
+    title: page.title,
+    slug: page.slug,
+    normalized_slug: page.normalized_slug,
+    status: page.status,
+    markdown,
+    html,
+    toc: page.toc_json ? JSON.parse(page.toc_json) : [],
+    tags: page.tags_json ? JSON.parse(page.tags_json) : [],
+    created_at: page.created_at,
+    updated_at: page.updated_at,
+    latest_version_id: latestVersion?.id || null,
+    published_version_id: publishedVersion?.id || null
+  };
+}
+
 export async function createPage(env: Env, input: { title: string; slug?: string; summary?: string }, user: AuthedUser) {
   const siteId = env.SITE_ID || 'site_default';
   const id = createId('pg');

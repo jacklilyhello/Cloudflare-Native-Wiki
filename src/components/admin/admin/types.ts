@@ -1,3 +1,30 @@
-export type PageItem = { id: string; title: string; slug: string; status: string; summary?: string; content?: string; meta_title?: string; meta_description?: string };
+export type PageItem = {
+  id: string;
+  title: string;
+  slug: string;
+  status: string;
+  summary?: string;
+  meta_title?: string;
+  meta_description?: string;
+};
+export type PageEditorPayload = {
+  id: string;
+  title: string;
+  slug: string;
+  normalized_slug: string;
+  status: string;
+  markdown: string;
+  html: string;
+  toc: unknown[];
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  latest_version_id: string | null;
+  published_version_id: string | null;
+  summary?: string;
+  meta_title?: string;
+  meta_description?: string;
+};
+export type ApiErrorState = { code: string; message: string; status: number };
 export type SettingsMap = Record<string, string>;
 export type ToastPush = (t: 'success' | 'error', m: string) => void;
