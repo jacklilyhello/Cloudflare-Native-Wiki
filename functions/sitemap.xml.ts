@@ -3,7 +3,9 @@ import { CACHE_KEYS } from './_lib/cache';
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const siteId = context.env.SITE_ID || 'site_default';
-  const cached = await context.env.WIKI_KV.get(CACHE_KEYS.sitemap(siteId));
+  const forceRebuild = new URL(context.request.url).searchParams.get('rebuild') === '1';
+  if (forceRebuild) await context.env.WIKI_KV.delete(CACHE_KEYS.sitemap(siteId));
+  const cached = !forceRebuild ? await context.env.WIKI_KV.get(CACHE_KEYS.sitemap(siteId)) : null;
   if (cached) return new Response(cached, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=3600, s-maxage=86400' } });
 
   const result = await context.env.DB.prepare(

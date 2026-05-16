@@ -32,13 +32,15 @@ export function renderDocument(input: {
   toc: any[];
   slug: string;
 }) {
-  const siteTitle = input.settings['site.title'] || 'Emby Wiki';
-  const footer = input.settings['site.footer'] || '';
+  const siteTitle = input.settings.site_title || input.settings['site.title'] || 'Emby Wiki';
+  const footer = input.settings.footer_text || input.settings['site.footer'] || '';
   const title = input.page.meta_title || `${input.page.title} - ${siteTitle}`;
-  const description = input.page.meta_description || input.page.summary || input.settings['seo.default_description'] || '';
-  const canonical = input.page.canonical_url || `${input.env.SITE_URL}/docs/${input.slug}`;
-  const ogTitle = input.page.og_title || title;
-  const ogDescription = input.page.og_description || description;
+  const description = input.page.meta_description || input.page.summary || input.page.excerpt || input.settings.seo_description || input.settings['seo.default_description'] || '';
+  const canonical = input.page.canonical_url || `${input.settings.site_url || input.env.SITE_URL}/docs/${input.slug}`;
+  const ogTitle = input.page.og_title || input.settings.og_title || title;
+  const ogDescription = input.page.og_description || input.settings.og_description || description;
+  const ogImage = input.page.og_image_url || input.settings.og_image_url || '';
+  const twitterCard = ogImage ? 'summary_large_image' : 'summary';
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'TechArticle',
@@ -46,6 +48,7 @@ export function renderDocument(input: {
     description,
     datePublished: input.page.published_at,
     dateModified: input.page.updated_at,
+    mainEntityOfPage: canonical,
     author: { '@type': 'Organization', name: siteTitle }
   };
 
@@ -61,6 +64,11 @@ export function renderDocument(input: {
   <meta property="og:description" content="${escapeHtml(ogDescription)}" />
   <meta property="og:type" content="article" />
   <meta property="og:url" content="${escapeHtml(canonical)}" />
+  ${ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}" />` : ''}
+  <meta name="twitter:card" content="${twitterCard}" />
+  <meta name="twitter:title" content="${escapeHtml(ogTitle)}" />
+  <meta name="twitter:description" content="${escapeHtml(ogDescription)}" />
+  ${ogImage ? `<meta name="twitter:image" content="${escapeHtml(ogImage)}" />` : ''}
   <link rel="stylesheet" href="/assets/wiki.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>

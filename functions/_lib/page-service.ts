@@ -8,17 +8,32 @@ import { getPublicSettings } from './settings';
 import { renderDocument } from './render-page';
 import { writeAuditLog } from './audit';
 
-type PublishPipelineStep = 'r2-write' | 'd1-write' | 'kv-refresh' | 'cache-rebuild';
+type PublishPipelineStep = 'r2-write' | 'd1-write';
 
-class PublishRetryableError extends Error {
-  code: string;
-  failedStep: PublishPipelineStep;
-  constructor(message: string, failedStep: PublishPipelineStep) {
-    super(message);
-    this.name = 'PublishRetryableError';
-    this.code = 'PUBLISH_RETRYABLE';
-    this.failedStep = failedStep;
-  }
+function stripMarkdown(content = '') {
+  return content
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[[^\]]*\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[>#*_~\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildExcerpt(content = '', summary = '', maxLength = 180) {
+  const base = (summary || '').trim() || stripMarkdown(content);
+  return base.length <= maxLength ? base : `${base.slice(0, maxLength).trimEnd()}…`;
+}
+
+function buildSearchText(input: { title?: string; slug?: string; summary?: string; excerpt?: string; tags?: string[]; content?: string }) {
+  return [input.title, input.slug, input.summary, input.excerpt, (input.tags || []).join(' '), stripMarkdown(input.content || '')]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export async function listPages(env: Env) {
@@ -107,10 +122,20 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
   const previousSlug = normalizeSlug(before.slug);
   const siteId = env.SITE_ID || 'site_default';
   const slug = await ensureUniqueSlug(env, input.slug || before.slug, id);
+  const newSlug = normalizeSlug(slug);
   const content = typeof input.content === 'string' ? input.content : await getPageContent(env, before);
-  const settingsRow = await env.DB.prepare(`SELECT value FROM settings WHERE site_id = ? AND key = 'allowed_iframe_domains' LIMIT 1`).bind(siteId).first<{ value: string }>();
-  const allowedIframeDomains = (settingsRow?.value || '').split(/[\n,]/).map((v) => v.trim()).filter(Boolean);
-  const rendered = renderMarkdown(content, { allowedIframeDomains });
+  const rendered = renderMarkdown(content);
+  const excerpt = buildExcerpt(content, input.summary || before.summary || '');
+  const tags = Array.isArray(input.tags) ? input.tags.filter((item: unknown) => typeof item === 'string').map((item: string) => item.trim()).filter(Boolean) : [];
+  const description = typeof input.meta_description === 'string' ? input.meta_description : (before.meta_description || '');
+  const searchText = buildSearchText({
+    title: input.title || before.title,
+    slug: newSlug,
+    summary: `${input.summary || before.summary || ''} ${description}`.trim(),
+    excerpt,
+    tags,
+    content
+  });
   const versionId = createId('ver');
   const contentHash = await sha256(content);
   const contentKey = `content/pages/${id}/${versionId}.md`;
@@ -132,7 +157,6 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
   }
 
   const latest = await env.DB.prepare(`SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM page_versions WHERE page_id = ?`).bind(id).first<{ next: number }>();
-  const newSlug = normalizeSlug(slug);
   const oldSlug = previousSlug;
 
   const batch = [
@@ -141,8 +165,8 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?)`
     ).bind(versionId, siteId, id, latest?.next || 1, input.title || before.title, newSlug, contentKey, renderedKey, contentHash, JSON.stringify(rendered.toc), user.id),
     env.DB.prepare(
-      `UPDATE pages SET title = ?, slug = ?, normalized_slug = ?, summary = ?, status = 'published', current_version_id = ?, content_r2_key = ?, rendered_r2_key = ?, toc_json = ?, reading_time = ?, word_count = ?, updated_by = ?, published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).bind(input.title || before.title, newSlug, normalizeSlug(newSlug), input.summary || before.summary || '', versionId, contentKey, renderedKey, JSON.stringify(rendered.toc), rendered.readingTime, rendered.wordCount, user.id, id)
+      `UPDATE pages SET title = ?, slug = ?, normalized_slug = ?, summary = ?, excerpt = ?, tags_json = ?, search_text = ?, status = 'published', current_version_id = ?, content_r2_key = ?, rendered_r2_key = ?, toc_json = ?, reading_time = ?, word_count = ?, updated_by = ?, published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+    ).bind(input.title || before.title, newSlug, normalizeSlug(newSlug), input.summary || before.summary || '', excerpt, JSON.stringify(tags), searchText, versionId, contentKey, renderedKey, JSON.stringify(rendered.toc), rendered.readingTime, rendered.wordCount, user.id, id)
   ];
 
   if (oldSlug && oldSlug !== newSlug) {
@@ -171,63 +195,21 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
     throw error;
   }
   const updated = await getPage(env, id);
-  pipelineStep = 'kv-refresh';
-  try {
-    if (oldSlug) await env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, oldSlug));
-    await env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, newSlug));
-    await env.WIKI_KV.delete(CACHE_KEYS.navigation(siteId));
-    await env.WIKI_KV.delete(CACHE_KEYS.sitemap(siteId));
-    await env.WIKI_KV.delete(CACHE_KEYS.settings(siteId));
-  } catch {
-    await writeAuditLog(env, {
-      user,
-      action: 'page_publish_failed',
-      entityType: 'page',
-      entityId: id,
-      metadata: { versionId, oldSlug, newSlug, contentHash, pipelineStep, failedStep: pipelineStep, compensationExecuted }
-    });
-    throw new PublishRetryableError('KV refresh failed, please retry', pipelineStep);
-  }
-
-  pipelineStep = 'cache-rebuild';
-  try {
-    const navigation = await getNavigationTree(env);
-    const settings = await getPublicSettings(env);
-    const fullHtml = renderDocument({ env, settings, navigation, page: updated, html: rendered.html, toc: rendered.toc, slug: newSlug });
-    await putJson(env, CACHE_KEYS.pageBySlug(siteId, newSlug), {
-      page: updated,
-      html: rendered.html,
-      toc: rendered.toc,
-      fullHtml,
-      contentHash,
-      versionId,
-      cachedAt: Date.now()
-    });
-    const cache = (caches as unknown as { default: Cache }).default;
-    const oldUrl = `${env.SITE_URL}/docs/${oldSlug}`;
-    const newUrl = `${env.SITE_URL}/docs/${newSlug}`;
-    if (oldSlug && oldSlug !== newSlug) {
-      await cache.delete(new Request(oldUrl, { method: 'GET' }));
-    }
-    await cache.delete(new Request(newUrl, { method: 'GET' }));
-    await cache.put(new Request(newUrl, { method: 'GET' }), new Response(fullHtml, {
-      headers: {
-        'content-type': 'text/html; charset=utf-8',
-        'cache-control': 'public, max-age=60, s-maxage=86400',
-        'etag': `"${contentHash || versionId}"`,
-        'x-wiki-cache': 'edge-refresh'
-      }
-    }));
-  } catch {
-    await writeAuditLog(env, {
-      user,
-      action: 'page_publish_failed',
-      entityType: 'page',
-      entityId: id,
-      metadata: { versionId, oldSlug, newSlug, contentHash, pipelineStep, failedStep: pipelineStep, compensationExecuted }
-    });
-    throw new PublishRetryableError('Cache rebuild failed, please retry', pipelineStep);
-  }
+  if (oldSlug) await env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, oldSlug));
+  await env.WIKI_KV.delete(CACHE_KEYS.sitemap(siteId));
+  await env.WIKI_KV.delete(CACHE_KEYS.robots(siteId));
+  const navigation = await getNavigationTree(env);
+  const settings = await getPublicSettings(env);
+  const fullHtml = renderDocument({ env, settings, navigation, page: updated, html: rendered.html, toc: rendered.toc, slug: newSlug });
+  await putJson(env, CACHE_KEYS.pageBySlug(siteId, newSlug), {
+    page: updated,
+    html: rendered.html,
+    toc: rendered.toc,
+    fullHtml,
+    contentHash,
+    versionId,
+    cachedAt: Date.now()
+  });
   await writeAuditLog(env, {
     user,
     action: 'page_publish',

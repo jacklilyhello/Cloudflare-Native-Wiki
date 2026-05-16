@@ -4,6 +4,7 @@ export const CACHE_KEYS = {
   settings: (siteId: string) => `site:${siteId}:settings:public`,
   navigation: (siteId: string) => `site:${siteId}:navigation:tree`,
   sitemap: (siteId: string) => `site:${siteId}:sitemap:xml`,
+  robots: (siteId: string) => `site:${siteId}:robots:txt`,
   pageBySlug: (siteId: string, slug: string) => `site:${siteId}:page:slug:${slug}:latest`,
   redirect: (siteId: string, slug: string) => `site:${siteId}:redirect:${slug}`
 };
