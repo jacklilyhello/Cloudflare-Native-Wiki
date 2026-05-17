@@ -1,16 +1,74 @@
 import React, { useState } from 'react';
-import { gunzipSync, strFromU8 } from 'fflate';
 import { api } from './api';
 import LoadingButton from './LoadingButton';
 import type { ToastPush } from './types';
 
+type Stage = 'upload' | 'dryrun' | 'confirm';
+
 export default function ImportPanel({ push }: { push: ToastPush }) {
-  const [parsed, setParsed] = useState<any>({}); const [running, setRunning] = useState(false); const [progress, setProgress] = useState(0); const [logs, setLogs] = useState<string[]>([]); const [jobId, setJobId] = useState(''); const [failedAssets, setFailedAssets] = useState<any[]>([]); const [jobReport, setJobReport] = useState<any>(null);
-  const addLog = (line: string) => setLogs((s) => [`${new Date().toLocaleTimeString()} ${line}`, ...s].slice(0, 40));
-  async function parse(file: File) { const buf = new Uint8Array(await file.arrayBuffer()); const tar = gunzipSync(buf); const files = parseTar(tar); const out: any = { assets: [] }; Object.entries(files).forEach(([k, v]: any) => { const name = String(k); if (name.endsWith('settings.json')) out.settings = JSON.parse(strFromU8(v)); else if (name.endsWith('navigation.json')) out.navigation = JSON.parse(strFromU8(v)); else if (name.endsWith('pages.json.gz')) out.pages = JSON.parse(strFromU8(gunzipSync(v))); else if (name.endsWith('pages-history.json.gz')) out.history = JSON.parse(strFromU8(gunzipSync(v))); else if (name.includes('/assets/')) out.assets.push({ path: name, name: name.split('/').pop(), mime: 'image/png', dataBase64: btoa(String.fromCharCode(...v)) }); }); out.navigationTree = mapWikiNavigation(out.navigation); setParsed(out); addLog(`解析完成 pages=${out.pages?.length || 0} history=${out.history?.length || 0} assets=${out.assets?.length || 0}`); push('success', `解析完成: pages=${out.pages?.length || 0}, assets=${out.assets?.length || 0}`); }
-  return <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5"><h2 className="text-lg font-semibold">Wiki.js Import</h2><p className="mt-1 text-sm text-[var(--muted)]">上传 tar.gz 并分步导入 settings/assets/pages/navigation。</p><div className="mt-5"><label className="flex min-h-24 cursor-pointer items-center justify-center rounded-xl border border-dashed p-4">上传 wikijs-web-export-*.tar.gz<input type="file" className="hidden" accept=".tar.gz,.tgz" onChange={(e) => e.target.files?.[0] && parse(e.target.files[0]).catch((err) => push('error', err.message))} /></label><div className="mt-3 text-sm">pages: {parsed.pages?.length || 0} / history: {parsed.history?.length || 0} / assets: {parsed.assets?.length || 0}</div><div className="mt-2 h-2 rounded bg-slate-200"><div className="h-2 rounded bg-blue-500" style={{ width: `${progress}%` }} /></div><div className="mt-3 flex gap-2"><LoadingButton loading={running} onClick={async () => { try { setRunning(true); setFailedAssets([]); const totalItems = (parsed.pages?.length || 0) + (parsed.assets?.length || 0) + 2; const oldJob = jobId ? await api(`/api/import/jobs/${jobId}`) : null; const nextOffset = oldJob?.job?.processed_items ? Math.max(0, Number(oldJob.job.processed_items) - (parsed.assets?.length || 0)) : 0; const job = oldJob?.job ? { id: oldJob.job.id } : await api('/api/import/jobs', { method: 'POST', body: JSON.stringify({ source: 'wikijs', totalItems }) }); setJobId(job.id); setProgress(5); if (parsed.settings) await api('/api/import/wikijs/settings', { method: 'POST', body: JSON.stringify({ settings: parsed.settings }) }); setProgress(25); if (parsed.assets?.length && nextOffset === 0) { const chunks = chunk(parsed.assets, 10); for (let i = 0; i < chunks.length; i++) { const result = await retry(async () => api('/api/import/wikijs/assets', { method: 'POST', body: JSON.stringify({ assets: chunks[i], jobId: job.id }) }), 2); if (result.failures?.length) setFailedAssets((s: any[]) => [...s, ...result.failures]); setProgress(25 + Math.round(((i + 1) / chunks.length) * 35)); } } if (parsed.pages?.length) { const pageChunks = chunk(parsed.pages.slice(nextOffset), 50); for (let i = 0; i < pageChunks.length; i++) { await api('/api/import/wikijs/pages', { method: 'POST', body: JSON.stringify({ pages: parsed.pages, history: parsed.history || [], pageOffset: nextOffset + i * 50, pageLimit: 50, jobId: job.id }) }); } } setProgress(80); if (parsed.navigationTree?.length) await api('/api/import/wikijs/navigation', { method: 'POST', body: JSON.stringify({ tree: parsed.navigationTree }) }); setProgress(100); await api(`/api/import/jobs/${job.id}`, { method: 'PATCH', body: JSON.stringify({ status: failedAssets.length ? 'partial' : 'done', progress: 100, summaryJson: { failedAssets: failedAssets.length } }) }); setJobReport((await api(`/api/import/jobs/${job.id}`)).job); push('success', '导入完成'); } catch (e: any) { if (jobId) await api(`/api/import/jobs/${jobId}`, { method: 'PATCH', body: JSON.stringify({ status: 'failed', errorJson: { message: e.message } }) }); push('error', `导入失败: ${e.message}`); } finally { setRunning(false); } }} className="rounded-xl bg-[var(--primary)] px-4 py-2 text-sm text-white">开始/恢复导入</LoadingButton></div><div className="mt-3 max-h-40 overflow-auto rounded border p-2 text-xs">{logs.map((l, i) => <div key={i}>{l}</div>)}</div>{jobReport && <div className="mt-3 rounded border p-3 text-xs"><div>job: {jobReport.id}</div><div>status: {jobReport.status}</div></div>}</div></section>;
+  const [stage, setStage] = useState<Stage>('upload');
+  const [upload, setUpload] = useState<any>(null);
+  const [preview, setPreview] = useState<any>(null);
+  const [report, setReport] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  async function onUpload(file: File) {
+    setLoading(true);
+    try {
+      const form = new FormData(); form.append('file', file);
+      const res = await api('/api/import/wikijs/upload', { method: 'POST', body: form });
+      setUpload(res); setStage('dryrun'); setProgress(30);
+      push('success', `上传完成: ${res.filename}`);
+    } catch (e: any) { push('error', e.message); } finally { setLoading(false); }
+  }
+
+  async function doDryRun() {
+    if (!upload?.key) return;
+    setLoading(true);
+    try {
+      const res = await api('/api/import/wikijs/dry-run', { method: 'POST', body: JSON.stringify({ key: upload.key }) });
+      setPreview(res); setStage('confirm'); setProgress(65);
+    } catch (e: any) { push('error', e.message); } finally { setLoading(false); }
+  }
+
+  async function confirmImport() {
+    if (!upload?.key) return;
+    setLoading(true);
+    try {
+      const res = await api('/api/import/wikijs/confirm-import', { method: 'POST', body: JSON.stringify({ key: upload.key }) });
+      setReport(res); setProgress(100); push('success', `导入完成 job=${res.jobId}`);
+    } catch (e: any) { push('error', e.message); } finally { setLoading(false); }
+  }
+
+  return <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+    <h2 className="text-lg font-semibold">Wiki.js Import</h2>
+    <p className="mt-1 text-sm text-[var(--muted)]">三段式：上传 → dry-run 预览 → 确认导入</p>
+    <div className="mt-2 h-2 rounded bg-slate-200"><div className="h-2 rounded bg-blue-500" style={{ width: `${progress}%` }} /></div>
+
+    {stage === 'upload' && <div className="mt-4">
+      <label className="flex min-h-24 cursor-pointer items-center justify-center rounded-xl border border-dashed p-4">上传 wikijs-web-export-*.tar.gz
+        <input type="file" className="hidden" accept=".tar.gz,.tgz" onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])} />
+      </label>
+    </div>}
+
+    {stage === 'dryrun' && <div className="mt-4 space-y-3 text-sm">
+      <div>已上传：{upload?.filename} ({upload?.size} bytes)</div>
+      <LoadingButton loading={loading} onClick={doDryRun} className="rounded-xl bg-[var(--primary)] px-4 py-2 text-white">执行 dry-run 解析</LoadingButton>
+    </div>}
+
+    {stage === 'confirm' && <div className="mt-4 space-y-3 text-sm">
+      <div>pages: {preview?.pages?.length || 0} / assets: {preview?.metadata?.assetCount || 0} / history: {preview?.metadata?.historyCount || 0}</div>
+      <div>errors: {(preview?.errors || []).length}</div>
+      <div className="max-h-40 overflow-auto rounded border p-2 text-xs">{(preview?.pages || []).slice(0, 20).map((p: any, idx: number) => <div key={idx}>{p.path} - {p.title}</div>)}</div>
+      <LoadingButton loading={loading} onClick={confirmImport} className="rounded-xl bg-emerald-600 px-4 py-2 text-white">确认导入</LoadingButton>
+    </div>}
+
+    {report?.stats && <div className="mt-4 rounded border p-3 text-xs space-y-1">
+      <div>总文件: {report.stats.totalFiles}</div>
+      <div>页面 成功/跳过/失败: {report.stats.pages.success}/{report.stats.pages.skipped}/{report.stats.pages.failed}</div>
+      <div>失败原因: {JSON.stringify(report.stats.failureReasons)}</div>
+      <div>导航/缓存刷新: {report.stats.refreshed.navigation ? 'yes' : 'no'} / {report.stats.refreshed.cache ? 'yes' : 'no'}</div>
+    </div>}
+  </section>;
 }
-function parseTar(data: Uint8Array): Record<string, Uint8Array> { const out: Record<string, Uint8Array> = {}; let offset = 0; while (offset + 512 <= data.length) { const header = data.slice(offset, offset + 512); const name = strFromU8(header.slice(0, 100)).replace(/\0.*$/, ''); if (!name) break; const sizeOct = strFromU8(header.slice(124, 136)).replace(/\0.*$/, '').trim(); const size = parseInt(sizeOct || '0', 8) || 0; const start = offset + 512; const end = start + size; out[name] = data.slice(start, end); offset = start + Math.ceil(size / 512) * 512; } return out; }
-function chunk<T>(arr: T[], n: number) { const out: T[][] = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; }
-async function retry(fn: () => Promise<any>, times = 2) { let err: any; for (let i = 0; i <= times; i++) { try { return await fn(); } catch (e) { err = e; } } throw err; }
-function mapWikiNavigation(nav: any) { const localePriority = ['zh', 'zh-CN', 'en']; const siteNode = nav?.site || {}; const picked = localePriority.map((k) => siteNode?.[k]?.items).find(Boolean) || siteNode?.items || nav?.items || []; const mapItems = (items: any[]): any[] => (items || []).map((item: any, idx: number) => { if (item.targetType === 'external') return { id: `imp-${Date.now()}-${idx}`, type: 'external', title: item.label || item.target, href: item.target }; const target = String(item.target || ''); return { id: `imp-${Date.now()}-${idx}`, type: 'page', title: item.label || target, slug: target }; }); return mapItems(picked); }
