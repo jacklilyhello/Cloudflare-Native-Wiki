@@ -1,5 +1,5 @@
 import type { Env } from '../_lib/types';
-import { normalizeSlug } from '../_lib/slug';
+import { encodeSlugPath, normalizeSlugPath } from '../_lib/slug';
 import { CACHE_KEYS, getJson, putJson } from '../_lib/cache';
 import { getNavigationTree } from '../_lib/navigation';
 import { getPublicSettings } from '../_lib/settings';
@@ -37,7 +37,7 @@ async function buildPageResponse(
     ).bind(siteId, slug).first<any>();
 
     if (redirect?.new_slug) {
-      return Response.redirect(`/docs/${encodeURIComponent(redirect.new_slug)}`, redirect.redirect_type || 301);
+      return Response.redirect(`/docs/${encodeSlugPath(redirect.new_slug)}`, redirect.redirect_type || 301);
     }
 
     const notFoundHtml = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="robots" content="noindex, nofollow" /><title>页面不存在</title><style>body{font-family:Inter,system-ui,-apple-system,sans-serif;background:#0b1020;color:#e7ecff;display:grid;place-items:center;min-height:100vh;margin:0}.card{max-width:560px;padding:32px;border:1px solid #28325c;border-radius:16px;background:#121935;box-shadow:0 10px 40px rgba(0,0,0,.35)}h1{margin:0 0 12px;font-size:28px}p{opacity:.88;line-height:1.7}a{color:#7cb7ff;text-decoration:none}.meta{margin-top:16px;font-size:13px;opacity:.7}</style></head><body><main class="card"><h1>404 · 页面未找到</h1><p>你访问的文档可能已移动、重命名或暂未发布。请返回首页或使用搜索查找相关内容。</p><p><a href="/">返回首页</a></p><p class="meta">Slug: ${slug}</p></main></body></html>`;
@@ -83,7 +83,7 @@ async function buildPageResponse(
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const raw = Array.isArray(context.params.slug) ? context.params.slug.join('/') : String(context.params.slug || '');
-  const slug = normalizeSlug(raw);
+  const slug = normalizeSlugPath(raw);
   if (!slug) return Response.redirect(`${context.env.SITE_URL}/`, 302);
 
   const cacheStorage = caches as unknown as { default: Cache };

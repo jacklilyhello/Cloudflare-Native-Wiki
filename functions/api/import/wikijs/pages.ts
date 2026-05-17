@@ -2,7 +2,7 @@ import type { Env } from '../../../_lib/types';
 import { ok, readJson } from '../../../_lib/http';
 import { requireUser } from '../../../_lib/auth';
 import { createId } from '../../../_lib/id';
-import { normalizeSlug } from '../../../_lib/slug';
+import { encodeSlugPath, normalizeSlugPath } from '../../../_lib/slug';
 import { renderMarkdown } from '../../../_lib/markdown';
 import { CACHE_KEYS } from '../../../_lib/cache';
 
@@ -10,7 +10,7 @@ type WikiPage = { path: string; title: string; description?: string; content?: s
 type WikiHistory = { pagePath?: string; path?: string; title?: string; content?: string; createdAt?: string; versionNumber?: number };
 
 function mapSlug(path: string) {
-  const raw = normalizeSlug(path || '');
+  const raw = normalizeSlugPath(path || '');
   if (!raw) return 'home';
   if (raw === 'home' || raw === 'zh/home') return 'home';
   return raw.startsWith('zh/') ? raw.slice(3) : raw;
@@ -32,7 +32,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   for (const row of pages) {
     const slug = mapSlug(row.path);
-    const oldSlug = normalizeSlug(row.path || '');
+    const oldSlug = normalizeSlugPath(row.path || '');
     const pageId = createId('pg');
     const versionId = createId('ver');
     const content = row.content || '';
@@ -45,14 +45,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     await context.env.DB.prepare(
       `INSERT OR REPLACE INTO pages (id, site_id, title, slug, normalized_slug, summary, status, visibility, current_version_id, content_r2_key, rendered_r2_key, toc_json, meta_title, meta_description, reading_time, word_count, created_by, updated_by, published_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'public', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'published' THEN CURRENT_TIMESTAMP ELSE NULL END)`
-    ).bind(pageId, siteId, row.title || slug, slug, normalizeSlug(slug), row.description || '', row.isPublished ? 'published' : 'draft', versionId, contentKey, renderedKey, JSON.stringify(rendered.toc), row.title || slug, row.description || '', rendered.readingTime, rendered.wordCount, user.id, user.id, row.isPublished ? 'published' : 'draft').run();
+    ).bind(pageId, siteId, row.title || slug, slug, normalizeSlugPath(slug), row.description || '', row.isPublished ? 'published' : 'draft', versionId, contentKey, renderedKey, JSON.stringify(rendered.toc), row.title || slug, row.description || '', rendered.readingTime, rendered.wordCount, user.id, user.id, row.isPublished ? 'published' : 'draft').run();
 
     await context.env.DB.prepare(
       `INSERT INTO page_versions (id, site_id, page_id, version_number, title, slug, content_r2_key, rendered_r2_key, content_hash, toc_json, status, created_by)
        VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(versionId, siteId, pageId, row.title || slug, slug, contentKey, renderedKey, versionId, JSON.stringify(rendered.toc), row.isPublished ? 'published' : 'draft', user.id).run();
 
-    const pageHistory = history.filter((h) => normalizeSlug(h.path || h.pagePath || '') === oldSlug);
+    const pageHistory = history.filter((h) => normalizeSlugPath(h.path || h.pagePath || '') === oldSlug);
     let seq = 2;
     for (const h of pageHistory) {
       const hVer = createId('ver');
@@ -69,14 +69,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       seq++;
     }
 
-    if (oldSlug && oldSlug !== normalizeSlug(slug)) {
+    if (oldSlug && oldSlug !== normalizeSlugPath(slug)) {
       await context.env.DB.prepare(
         `INSERT OR REPLACE INTO slug_redirects (id, site_id, page_id, old_slug, old_normalized_slug, new_slug, redirect_type)
          VALUES (?, ?, ?, ?, ?, ?, 301)`
-      ).bind(createId('redir'), siteId, pageId, oldSlug, oldSlug, normalizeSlug(slug)).run();
-      await context.env.WIKI_KV.put(CACHE_KEYS.redirect(siteId, oldSlug), `/docs/${normalizeSlug(slug)}`);
+      ).bind(createId('redir'), siteId, pageId, oldSlug, oldSlug, normalizeSlugPath(slug)).run();
+      await context.env.WIKI_KV.put(CACHE_KEYS.redirect(siteId, oldSlug), `/docs/${encodeSlugPath(slug)}`);
     }
-    await context.env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, normalizeSlug(slug)));
+    await context.env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, normalizeSlugPath(slug)));
     imported++;
   }
 

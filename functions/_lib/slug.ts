@@ -1,28 +1,50 @@
 import type { Env } from './types';
 
-export function normalizeSlug(input: string) {
-  return input
-    .trim()
-    .replace(/^\/docs\//, '')
-    .replace(/^\/+|\/+$/g, '')
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\u4e00-\u9fa5/_-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/\/+/g, '/')
-    .replace(/^-|-$/g, '');
+function safeDecode(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
-export function slugifyTitle(title: string) {
-  return normalizeSlug(title)
-    .replace(/[\u4e00-\u9fa5]/g, '')
-    .replace(/^-|-$/g, '') || 'untitled';
+export function normalizeSlugPath(input: string) {
+  const decoded = safeDecode(String(input || '').trim());
+  return decoded
+    .replace(/^https?:\/\/[^/]+/i, '')
+    .replace(/^\/?docs\//i, '')
+    .replace(/^\/?zh\//i, '')
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/\/+/g, '/')
+    .split('/')
+    .map((segment) =>
+      segment
+        .trim()
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}_-]+/gu, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+    )
+    .filter(Boolean)
+    .join('/');
+}
+
+export function slugifyTitle(input: string) {
+  const normalized = normalizeSlugPath(input || '');
+  return normalized || 'untitled';
+}
+
+export function encodeSlugPath(input: string) {
+  return normalizeSlugPath(input)
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
 }
 
 export async function ensureUniqueSlug(env: Env, rawSlug: string, exceptPageId?: string) {
   const siteId = env.SITE_ID || 'site_default';
-  const base = normalizeSlug(rawSlug || 'untitled');
+  const base = normalizeSlugPath(rawSlug || 'untitled');
   let candidate = base;
   let index = 2;
 
