@@ -1,10 +1,10 @@
 import type { Env } from '../_lib/types';
-import { normalizeSlug } from '../_lib/slug';
+import { encodeSlugPath, normalizeSlugPath } from '../_lib/slug';
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const raw = Array.isArray(context.params.slug) ? context.params.slug.join('/') : String(context.params.slug || '');
-  const normalized = normalizeSlug(raw);
-  const legacySlug = normalizeSlug(`zh/${normalized}`);
+  const normalized = normalizeSlugPath(raw);
+  const legacySlug = normalizeSlugPath(`zh/${normalized}`);
   const siteId = context.env.SITE_ID || 'site_default';
 
   const redirect = await context.env.DB.prepare(
@@ -12,11 +12,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   ).bind(siteId, legacySlug).first<any>();
 
   if (redirect?.new_slug) {
-    return Response.redirect(`${context.env.SITE_URL}/docs/${redirect.new_slug}`, redirect.redirect_type || 301);
+    return Response.redirect(`${context.env.SITE_URL}/docs/${encodeSlugPath(redirect.new_slug)}`, redirect.redirect_type || 301);
   }
 
   if (normalized) {
-    return Response.redirect(`${context.env.SITE_URL}/docs/${normalized}`, 301);
+    return Response.redirect(`${context.env.SITE_URL}/docs/${encodeSlugPath(normalized)}`, 301);
   }
 
   return Response.redirect(`${context.env.SITE_URL}/`, 302);

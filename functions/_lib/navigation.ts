@@ -1,6 +1,6 @@
 import type { Env } from './types';
 import { CACHE_KEYS, getJson, putJson } from './cache';
-import { normalizeSlug } from './slug';
+import { encodeSlugPath, normalizeSlugPath } from './slug';
 
 export type NavigationNode = {
   id: string;
@@ -60,7 +60,7 @@ export function validateNavigationTree(tree: any): NavigationNode[] {
 }
 
 async function ensurePageExists(env: Env, siteId: string, title: string, slug: string) {
-  const normalized = normalizeSlug(slug);
+  const normalized = normalizeSlugPath(slug);
   const exists = await env.DB.prepare('SELECT id FROM pages WHERE site_id = ? AND normalized_slug = ? LIMIT 1').bind(siteId, normalized).first<any>();
   if (exists?.id) return exists.id;
   const pageId = `pg_${normalized || slug}_${Date.now()}`;
@@ -84,7 +84,7 @@ export async function replaceNavigationTree(env: Env, input: any) {
   await walk(tree, null, 0);
   const stmts = [env.DB.prepare('DELETE FROM navigation WHERE site_id = ?').bind(siteId)];
   for (const row of flat) {
-    const href = row.node.type === 'page' ? `/docs/${encodeURIComponent(row.node.slug)}` : row.node.href || null;
+    const href = row.node.type === 'page' ? `/docs/${encodeSlugPath(row.node.slug)}` : row.node.href || null;
     stmts.push(env.DB.prepare(`INSERT INTO navigation (id, site_id, parent_id, page_id, label, icon, href, sort_order, depth, is_folder, is_visible, is_pinned)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).bind(row.node.id, siteId, row.parentId, row.pageId, row.node.title, row.node.icon || null, href, row.sort, row.depth, row.node.type === 'section' ? 1 : 0, row.node.hidden ? 0 : 1));
   }

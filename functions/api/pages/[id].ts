@@ -2,7 +2,7 @@ import type { Env } from '../../_lib/types';
 import { ok, error, readJson } from '../../_lib/http';
 import { requireUser } from '../../_lib/auth';
 import { getPage, getPageEditorPayload } from '../../_lib/page-service';
-import { ensureUniqueSlug, normalizeSlug } from '../../_lib/slug';
+import { ensureUniqueSlug, normalizeSlugPath } from '../../_lib/slug';
 import { CACHE_KEYS } from '../../_lib/cache';
 import { writeAuditLog } from '../../_lib/audit';
 import { createId } from '../../_lib/id';
@@ -29,8 +29,8 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
   const body = await readJson<any>(context.request);
   const slug = await ensureUniqueSlug(context.env, body.slug || page.slug, id);
   const siteId = context.env.SITE_ID || 'site_default';
-  const oldSlug = normalizeSlug(page.slug);
-  const newSlug = normalizeSlug(slug);
+  const oldSlug = normalizeSlugPath(page.slug);
+  const newSlug = normalizeSlugPath(slug);
   await context.env.DB.prepare(
     `UPDATE pages SET title = ?, slug = ?, normalized_slug = ?, summary = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
   ).bind(body.title || page.title, slug, newSlug, body.summary || page.summary || '', user.id, id).run();
@@ -39,6 +39,12 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
       `INSERT OR REPLACE INTO slug_redirects (id, site_id, page_id, old_slug, old_normalized_slug, new_slug, redirect_type)
        VALUES (?, ?, ?, ?, ?, ?, 301)`
     ).bind(createId('redir'), siteId, id, oldSlug, oldSlug, newSlug).run();
+    const redirect = await context.env.DB.prepare(
+      `SELECT redirect_type FROM slug_redirects WHERE site_id = ? AND page_id = ? AND old_normalized_slug = ? AND new_slug = ? LIMIT 1`
+    ).bind(siteId, id, oldSlug, newSlug).first<{ redirect_type: number }>();
+    if (!redirect || Number(redirect.redirect_type) !== 301) {
+      throw new Error('slug redirect validation failed');
+    }
   }
   await Promise.all([
     context.env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, oldSlug)),
@@ -65,7 +71,7 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const siteId = context.env.SITE_ID || 'site_default';
   await context.env.DB.prepare(`DELETE FROM pages WHERE id = ?`).bind(id).run();
   await Promise.all([
-    context.env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, normalizeSlug(page.slug))),
+    context.env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, normalizeSlugPath(page.slug))),
     context.env.WIKI_KV.delete(CACHE_KEYS.sitemap(siteId))
   ]);
   await writeAuditLog(context.env, {

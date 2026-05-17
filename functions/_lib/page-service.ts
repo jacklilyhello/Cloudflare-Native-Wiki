@@ -1,6 +1,6 @@
 import type { AuthedUser, Env } from './types';
 import { createId, sha256 } from './id';
-import { ensureUniqueSlug, normalizeSlug, slugifyTitle } from './slug';
+import { ensureUniqueSlug, normalizeSlugPath, slugifyTitle } from './slug';
 import { renderMarkdown } from './markdown';
 import { CACHE_KEYS, putJson } from './cache';
 import { getNavigationTree } from './navigation';
@@ -94,7 +94,7 @@ export async function createPage(env: Env, input: { title: string; slug?: string
   await env.DB.prepare(
     `INSERT INTO pages (id, site_id, title, slug, normalized_slug, summary, status, created_by, updated_by)
      VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?)`
-  ).bind(id, siteId, input.title, slug, normalizeSlug(slug), input.summary || '', user.id, user.id).run();
+  ).bind(id, siteId, input.title, slug, normalizeSlugPath(slug), input.summary || '', user.id, user.id).run();
   await writeAuditLog(env, {
     user,
     action: 'page_create',
@@ -130,7 +130,7 @@ export async function savePageDraft(env: Env, id: string, input: any, user: Auth
   } else {
     statements.push(env.DB.prepare(
       `UPDATE pages SET title = ?, slug = ?, normalized_slug = ?, summary = ?, status = 'draft', content_r2_key = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).bind(input.title || page.title, slug, normalizeSlug(slug), input.summary || '', contentKey, user.id, id));
+    ).bind(input.title || page.title, slug, normalizeSlugPath(slug), input.summary || '', contentKey, user.id, id));
   }
 
   await env.DB.batch(statements);
@@ -147,10 +147,10 @@ export async function savePageDraft(env: Env, id: string, input: any, user: Auth
 export async function publishPage(env: Env, id: string, input: any, user: AuthedUser) {
   const before = await getPage(env, id);
   if (!before) throw new Error('Page not found');
-  const previousSlug = normalizeSlug(before.slug);
+  const previousSlug = normalizeSlugPath(before.slug);
   const siteId = env.SITE_ID || 'site_default';
   const slug = await ensureUniqueSlug(env, input.slug || before.slug, id);
-  const newSlug = normalizeSlug(slug);
+  const newSlug = normalizeSlugPath(slug);
   const content = typeof input.content === 'string' ? input.content : await getPageContent(env, before);
   const rendered = renderMarkdown(content);
   const excerpt = buildExcerpt(content, input.summary || before.summary || '');
@@ -179,7 +179,7 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
       action: 'page_publish_failed',
       entityType: 'page',
       entityId: id,
-      metadata: { versionId, oldSlug: previousSlug, newSlug: normalizeSlug(slug), contentHash, pipelineStep, failedStep: pipelineStep, compensationExecuted }
+      metadata: { versionId, oldSlug: previousSlug, newSlug: normalizeSlugPath(slug), contentHash, pipelineStep, failedStep: pipelineStep, compensationExecuted }
     });
     throw error;
   }
@@ -194,19 +194,27 @@ export async function publishPage(env: Env, id: string, input: any, user: Authed
     ).bind(versionId, siteId, id, latest?.next || 1, input.title || before.title, newSlug, contentKey, renderedKey, contentHash, JSON.stringify(rendered.toc), user.id),
     env.DB.prepare(
       `UPDATE pages SET title = ?, slug = ?, normalized_slug = ?, summary = ?, excerpt = ?, tags_json = ?, search_text = ?, status = 'published', current_version_id = ?, content_r2_key = ?, rendered_r2_key = ?, toc_json = ?, reading_time = ?, word_count = ?, updated_by = ?, published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).bind(input.title || before.title, newSlug, normalizeSlug(newSlug), input.summary || before.summary || '', excerpt, JSON.stringify(tags), searchText, versionId, contentKey, renderedKey, JSON.stringify(rendered.toc), rendered.readingTime, rendered.wordCount, user.id, id)
+    ).bind(input.title || before.title, newSlug, normalizeSlugPath(newSlug), input.summary || before.summary || '', excerpt, JSON.stringify(tags), searchText, versionId, contentKey, renderedKey, JSON.stringify(rendered.toc), rendered.readingTime, rendered.wordCount, user.id, id)
   ];
 
   if (oldSlug && oldSlug !== newSlug) {
     batch.push(env.DB.prepare(
       `INSERT OR REPLACE INTO slug_redirects (id, site_id, page_id, old_slug, old_normalized_slug, new_slug, redirect_type)
        VALUES (?, ?, ?, ?, ?, ?, 301)`
-    ).bind(createId('redir'), siteId, id, oldSlug, normalizeSlug(oldSlug), newSlug));
+    ).bind(createId('redir'), siteId, id, oldSlug, normalizeSlugPath(oldSlug), newSlug));
   }
 
   pipelineStep = 'd1-write';
   try {
     await env.DB.batch(batch);
+    if (oldSlug && oldSlug !== newSlug) {
+      const redirect = await env.DB.prepare(
+        `SELECT redirect_type FROM slug_redirects WHERE site_id = ? AND page_id = ? AND old_normalized_slug = ? AND new_slug = ? LIMIT 1`
+      ).bind(siteId, id, oldSlug, newSlug).first<{ redirect_type: number }>();
+      if (!redirect || Number(redirect.redirect_type) !== 301) {
+        throw new Error('slug redirect validation failed');
+      }
+    }
   } catch (error) {
     compensationExecuted = true;
     await Promise.allSettled([
