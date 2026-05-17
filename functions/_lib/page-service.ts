@@ -42,6 +42,7 @@ export async function listPages(env: Env) {
     `SELECT id, title, slug, summary, status, updated_at, published_at
      FROM pages
      WHERE site_id = ?
+       AND status != 'deleted'
      ORDER BY updated_at DESC
      LIMIT 200`
   ).bind(siteId).all();
@@ -50,7 +51,7 @@ export async function listPages(env: Env) {
 
 export async function getPage(env: Env, id: string) {
   const siteId = env.SITE_ID || 'site_default';
-  return env.DB.prepare(`SELECT * FROM pages WHERE site_id = ? AND id = ? LIMIT 1`).bind(siteId, id).first<any>();
+  return env.DB.prepare(`SELECT * FROM pages WHERE site_id = ? AND id = ? AND status != 'deleted' LIMIT 1`).bind(siteId, id).first<any>();
 }
 
 export async function getPageContent(env: Env, page: any) {

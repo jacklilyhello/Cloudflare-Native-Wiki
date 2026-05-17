@@ -120,3 +120,13 @@ export async function getNavigationTree(env: Env) {
 }
 
 export async function resetNavigationTree(env: Env) { return replaceNavigationTree(env, cloneDefault()); }
+
+export async function removeDeletedPageFromNavigation(env: Env, pageId: string) {
+  const siteId = env.SITE_ID || 'site_default';
+  const result = await env.DB.prepare('SELECT id FROM navigation WHERE site_id = ? AND page_id = ?').bind(siteId, pageId).all<any>();
+  const affectedNodeIds = (result.results || []).map((row) => row.id);
+  if (!affectedNodeIds.length) return { affectedCount: 0, affectedNodeIds };
+  await env.DB.prepare('DELETE FROM navigation WHERE site_id = ? AND page_id = ?').bind(siteId, pageId).run();
+  await env.WIKI_KV.delete(CACHE_KEYS.navigation(siteId));
+  return { affectedCount: affectedNodeIds.length, affectedNodeIds };
+}

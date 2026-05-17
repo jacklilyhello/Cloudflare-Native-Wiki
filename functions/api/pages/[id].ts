@@ -3,9 +3,10 @@ import { ok, error, readJson } from '../../_lib/http';
 import { requireUser } from '../../_lib/auth';
 import { getPage, getPageEditorPayload } from '../../_lib/page-service';
 import { ensureUniqueSlug, normalizeSlugPath } from '../../_lib/slug';
-import { CACHE_KEYS } from '../../_lib/cache';
+import { CACHE_KEYS, purgePageRelatedCaches } from '../../_lib/cache';
 import { writeAuditLog } from '../../_lib/audit';
 import { createId } from '../../_lib/id';
+import { removeDeletedPageFromNavigation } from '../../_lib/navigation';
 
 function getId(context: EventContext<Env, string, unknown>) {
   return String(context.params.id || '');
@@ -66,21 +67,34 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const user = await requireUser(context);
   if (user instanceof Response) return user;
   const id = getId(context);
-  const page = await getPage(context.env, id);
-  if (!page) return error('Page not found', 404);
   const siteId = context.env.SITE_ID || 'site_default';
-  await context.env.DB.prepare(`DELETE FROM pages WHERE id = ?`).bind(id).run();
-  await Promise.all([
-    context.env.WIKI_KV.delete(CACHE_KEYS.pageBySlug(siteId, normalizeSlugPath(page.slug))),
-    context.env.WIKI_KV.delete(CACHE_KEYS.sitemap(siteId))
-  ]);
+  const page = await context.env.DB.prepare(
+    `SELECT * FROM pages WHERE site_id = ? AND id = ? LIMIT 1`
+  ).bind(siteId, id).first<any>();
+  if (!page) return error('Page not found', 404);
+  const normalizedSlug = normalizeSlugPath(page.slug);
+  const isSoftDeleted = page.status === 'deleted';
+  if (!isSoftDeleted) {
+    await context.env.DB.prepare(
+      `UPDATE pages SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP, deleted_by = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE site_id = ? AND id = ?`
+    ).bind(user.id, user.id, siteId, id).run();
+  }
+  const navImpact = await removeDeletedPageFromNavigation(context.env, id);
+  const purgedCacheKeys = await purgePageRelatedCaches(context.env, { pageId: id, slug: normalizedSlug });
   await writeAuditLog(context.env, {
     user,
     request: context.request,
     action: 'page_delete',
     entityType: 'page',
     entityId: id,
-    metadata: { slug: page.slug, title: page.title }
+    metadata: {
+      slug: page.slug,
+      title: page.title,
+      softDeleted: !isSoftDeleted,
+      cacheKeysPurged: purgedCacheKeys,
+      navigationImpactedNodes: navImpact.affectedCount,
+      navigationImpactedNodeIds: navImpact.affectedNodeIds
+    }
   });
   return ok({});
 };
