@@ -16,8 +16,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const user = await requireUser(context);
   if (user instanceof Response) return user;
   const pageId = getId(context);
+  const siteId = context.env.SITE_ID || 'site_default';
+  const rawPage = await context.env.DB.prepare(`SELECT * FROM pages WHERE site_id = ? AND id = ? LIMIT 1`).bind(siteId, pageId).first<any>();
+  if (!rawPage) return error('Page not found', 404, 'PAGE_NOT_FOUND', { pageId });
+  if (rawPage.status === 'deleted' || rawPage.deleted_at) return error('Page has been deleted', 410, 'PAGE_DELETED', { pageId });
   const page = await getPageEditorPayload(context.env, pageId);
-  if (!page) return error('Page not found', 404, 'PAGE_NOT_FOUND', { pageId });
+  if (!page) return ok({ page: { id: rawPage.id, title: rawPage.title, slug: rawPage.slug, normalized_slug: rawPage.normalized_slug, status: rawPage.status, markdown: '', html: '', toc: [], tags: [], created_at: rawPage.created_at, updated_at: rawPage.updated_at, latest_version_id: rawPage.current_version_id || null, published_version_id: null }, warning: 'PAGE_VERSION_MISSING' });
   return ok({ page });
 };
 
