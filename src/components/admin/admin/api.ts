@@ -15,9 +15,10 @@ export async function api(path: string, init: RequestInit = {}) {
   const isApiError = json?.success === false || json?.ok === false;
   if (!res.ok || isApiError) {
     const message = json?.error?.message || json?.error || 'Request failed';
-    const err = new Error(message) as Error & { status?: number; code?: string };
+    const err = new Error(message) as Error & { status?: number; code?: string; details?: unknown };
     err.status = res.status;
     err.code = json?.error?.code || 'REQUEST_FAILED';
+    err.details = json?.error?.details;
     throw err;
   }
   return json.data ?? json;
