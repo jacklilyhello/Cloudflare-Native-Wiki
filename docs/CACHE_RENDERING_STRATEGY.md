@@ -19,8 +19,9 @@ Markdown should be rendered when a page is published. Public requests should use
 
 ```txt
 GET /docs/emby/docker
+  -> normalize slug to normalized_slug (emby/docker)
   -> Cache API match
-  -> KV page:slug:emby/docker:latest
+  -> KV page:slug:{normalized_slug}:latest
   -> D1 pages lookup
   -> R2 rendered HTML read
   -> assemble shell HTML
@@ -83,6 +84,14 @@ page:id:{pageId}:toc
 redirect:slug:{oldSlug}
 ```
 
+`{slug}` above means `normalized_slug` from the unified slug helper (`normalizeSlugPath`). This mapping is one-to-one:
+
+- request path `/docs/Emby//Docker` -> `normalized_slug = emby/docker`
+- cache key `page:slug:emby/docker:latest`
+- D1 lookup `pages.normalized_slug = emby/docker`
+- redirect lookup `slug_redirects.old_normalized_slug = emby/docker`
+- redirect destination path `/docs/${encodeSlugPath(new_slug)}` (segment-wise encoding, keeping `/` hierarchy)
+
 ## Cache invalidation
 
 Preferred strategy: versioned cache, not global purge.
@@ -123,4 +132,3 @@ return response;
 - Keep slug redirects separately cacheable.
 - Rebuild sitemap only on publish/unpublish/delete.
 - Settings changes should refresh `site:settings:public`.
-

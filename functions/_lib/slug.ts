@@ -36,10 +36,14 @@ export function slugifyTitle(input: string) {
 }
 
 export function encodeSlugPath(input: string) {
-  return normalizeSlugPath(input)
-    .split('/')
+  return splitSlugSegments(input)
     .map((segment) => encodeURIComponent(segment))
     .join('/');
+}
+
+export function splitSlugSegments(input: string) {
+  const normalized = normalizeSlugPath(input);
+  return normalized ? normalized.split('/') : [];
 }
 
 export async function ensureUniqueSlug(env: Env, rawSlug: string, exceptPageId?: string) {
